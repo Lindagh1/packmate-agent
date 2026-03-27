@@ -3,7 +3,11 @@ import re
 import datetime
 import requests
 from openai import OpenAI
+from dotenv import load_dotenv
 import os
+
+# Charge les variables du fichier .env (si on est en local)
+load_dotenv()                 
 
 # ─── CONFIGURATION ──────────────────────────────────────────────
 BASE_URL = "https://litellm-prod.apps.maas.redhatworkshops.io/v1"
