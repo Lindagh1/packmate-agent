@@ -10,6 +10,9 @@ st.caption("Dis-moi où tu pars, je vérifie la météo et on prépare ta valise
 if "llm_messages" not in st.session_state:
     st.session_state.llm_messages = [get_system_prompt()]
     st.session_state.chat_messages = []
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
 
 # Affichage des anciens messages
 for msg in st.session_state.chat_messages:
