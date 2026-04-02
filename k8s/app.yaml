@@ -1,0 +1,53 @@
+# ─── 1. LE SERVICE (Réseau interne) ──────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: packmate-agent-git
+spec:
+  selector:
+    app: packmate-agent-git
+  ports:
+    - port: 8501
+      targetPort: 8501
+
+---
+# ─── 2. LA ROUTE (URL Publique) ──────────────────────────────
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: packmate-agent-git
+spec:
+  port:
+    targetPort: 8501
+  to:
+    kind: Service
+    name: packmate-agent-git
+
+---
+# ─── 3. LE DEPLOYMENT (Le Conteneur sécurisé) ────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-agent-git
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: packmate-agent-git
+  template:
+    metadata:
+      labels:
+        app: packmate-agent-git
+    spec:
+      containers:
+        - name: packmate-agent-git
+          image: "image-registry.openshift-image-registry.svc:5000/packmate/packmate-agent-git@sha256:70b8257c0fe70166061523fd6c429849c08ab9ff16b2cd25a46e5ca44f32b094"
+          ports:
+            - containerPort: 8501
+          # Injection de la clé API depuis le Secret OpenShift
+          env:
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-secrets
+                  key: LITELLM_API_KEY
