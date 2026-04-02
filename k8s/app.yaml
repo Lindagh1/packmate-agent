@@ -7,8 +7,8 @@ spec:
   selector:
     app: packmate-agent-git
   ports:
-    - port: 8501
-      targetPort: 8501
+    - port: 8080
+      targetPort: 8080
 
 ---
 # ─── 2. LA ROUTE (URL Publique) ──────────────────────────────
@@ -18,7 +18,7 @@ metadata:
   name: packmate-agent-git
 spec:
   port:
-    targetPort: 8501
+    targetPort: 8080
   to:
     kind: Service
     name: packmate-agent-git
@@ -41,9 +41,9 @@ spec:
     spec:
       containers:
         - name: packmate-agent-git
-          image: "image-registry.openshift-image-registry.svc:5000/packmate/packmate-agent-git@sha256:70b8257c0fe70166061523fd6c429849c08ab9ff16b2cd25a46e5ca44f32b094"
+          image: "image-registry.openshift-image-registry.svc:5000/packmate/packmate-agent-git@sha256:8d0f9bd1a30bdb37fe4a422995fcef56fc71b5623ef546bf4ff939f3f695abb5"
           ports:
-            - containerPort: 8501
+            - containerPort: 8080
           # Injection de la clé API depuis le Secret OpenShift
           env:
             - name: LITELLM_API_KEY
