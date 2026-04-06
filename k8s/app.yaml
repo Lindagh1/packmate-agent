@@ -41,7 +41,7 @@ spec:
     spec:
       containers:
         - name: packmate-agent-git
-          image: "image-registry.openshift-image-registry.svc:5000/packmate/packmate-agent-git@sha256:8d0f9bd1a30bdb37fe4a422995fcef56fc71b5623ef546bf4ff939f3f695abb5"
+          image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git@sha256:7396462755f1d2bedede6ddf6f22474915edc262d4004ae91d4aedef24d3e533"
           ports:
             - containerPort: 8080
           # Injection de la clé API depuis le Secret OpenShift
