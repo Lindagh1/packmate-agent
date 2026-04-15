@@ -1,35 +1,38 @@
-# ─── 1. LE SERVICE (Réseau interne) ──────────────────────────
+# ─── 1. LE SERVICE (Le standardiste réseau) ──────────────────
 apiVersion: v1
 kind: Service
 metadata:
   name: packmate-agent-git
+  namespace: packmate-agent-prod
 spec:
   selector:
     app: packmate-agent-git
   ports:
-    - port: 8080
+    - name: http-streamlit
+      port: 8080
       targetPort: 8080
-
 ---
-# ─── 2. LA ROUTE (URL Publique) ──────────────────────────────
+# ─── 2. LA ROUTE (L'accès public internet) ───────────────────
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: packmate-agent-git
+  namespace: packmate-agent-prod
 spec:
   port:
-    targetPort: 8080
+    targetPort: http-streamlit
   to:
     kind: Service
     name: packmate-agent-git
-
 ---
-# ─── 3. LE DEPLOYMENT (Le Conteneur sécurisé) ────────────────
+# ─── 3. LE DEPLOYMENT (Ton application) ───────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: packmate-agent-git
+  namespace: packmate-agent-prod
   annotations:
+    # Ce bloc surveille l'image en DEV et met à jour la PROD automatiquement
     image.openshift.io/triggers: |-
       [
         {
@@ -53,11 +56,12 @@ spec:
     spec:
       containers:
         - name: packmate-agent-git
-          # 👇 CHANGEMENT N°2 : Fini le @sha256, on met le tag :latest 
+          # L'URL du registre interne que nous avons validée ensemble
           image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git:latest"
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8080
-          # Injection de la clé API depuis le Secret OpenShift
+            - name: http-streamlit
+              containerPort: 8080
           env:
             - name: LITELLM_API_KEY
               valueFrom:
