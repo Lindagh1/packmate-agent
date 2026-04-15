@@ -29,6 +29,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: packmate-agent-git
+  annotations:
+    image.openshift.io/triggers: |-
+      [
+        {
+          "from": {
+            "kind": "ImageStreamTag",
+            "name": "packmate-agent-git:latest",
+            "namespace": "packmate-agent"
+          },
+          "fieldPath": "spec.template.spec.containers[?(@.name==\"packmate-agent-git\")].image"
+        }
+      ]
 spec:
   replicas: 1
   selector:
@@ -41,7 +53,8 @@ spec:
     spec:
       containers:
         - name: packmate-agent-git
-          image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git@sha256:7396462755f1d2bedede6ddf6f22474915edc262d4004ae91d4aedef24d3e533"
+          # 👇 CHANGEMENT N°2 : Fini le @sha256, on met le tag :latest 
+          image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git:latest"
           ports:
             - containerPort: 8080
           # Injection de la clé API depuis le Secret OpenShift
