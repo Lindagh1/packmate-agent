@@ -20,7 +20,7 @@ metadata:
   namespace: packmate-agent-prod
 spec:
   port:
-    targetPort: http-streamlit
+    targetPort: 8080
   to:
     kind: Service
     name: packmate-agent-git
