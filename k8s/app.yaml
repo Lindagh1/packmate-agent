@@ -21,6 +21,9 @@ metadata:
 spec:
   port:
     targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
     name: packmate-agent-git
