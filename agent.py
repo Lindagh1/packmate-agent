@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()                 
 
 # --- CLUSTER / MAAS CONFIG ---
-BASE_URL = os.getenv("BASE_URL", "https://litellm-prod.apps.maas.redhatworkshops.io/v1")
-MODEL    = os.getenv("MODEL", "llama-scout-17b")
+BASE_URL = os.getenv("BASE_URL")
+MODEL    = os.getenv("MODEL")
 API_KEY  = os.getenv("LITELLM_API_KEY")
 
 client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
