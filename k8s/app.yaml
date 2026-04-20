@@ -68,3 +68,7 @@ spec:
                 secretKeyRef:
                   name: packmate-secrets
                   key: LITELLM_API_KEY
+            - name: BASE_URL
+              value: "https://litellm-prod.apps.maas.redhatworkshops.io/v1"
+            - name: MODEL
+              value: "llama-scout-17b"
