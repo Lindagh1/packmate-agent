@@ -57,7 +57,7 @@ spec:
       containers:
         - name: packmate-agent-git
           # L'URL du registre interne que nous avons validée ensemble
-          image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git@sha256:5be297851a9b2e88a5592d9cea42d8749de723c3be7b886e1d72dcbcd24ca6aa"
+          image: "image-registry.openshift-image-registry.svc:5000/packmate-agent/packmate-agent-git:latest"
           imagePullPolicy: Always
           ports:
             - name: http-streamlit
