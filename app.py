@@ -4,7 +4,7 @@ from agent import chat_turn, get_system_prompt
 st.set_page_config(page_title="PackMate AI", page_icon="🧳", layout="wide")
 
 # UI Styling & Header
-st.title("🧳 PackMate - Travel Agent")
+st.title("🧳 PackMate - Travel Agent from Paris")
 st.markdown("*Your AI Assistant for intelligent packing based on real-time weather.*")
 st.info("Language: Adaptive (Speak to me in your language) | Interface: English")
 
