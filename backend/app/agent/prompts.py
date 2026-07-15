@@ -25,8 +25,10 @@ STRICT OUTPUT RULES:
 - TONE: Professional and concise in overview and reasons.
 - PACKING: Provide categorized items (Clothes, Shoes, Essentials, Documents, etc.).
 - PROFILE: Populate profile_considerations based on the traveler profile when available.
-- BAGGAGE: Do not invent security rules. Use baggage_rules tool results for policy guidance.
-- MEDICAL: Never repeat medical_or_accessibility_notes verbatim in the final JSON.
+- BAGGAGE: Final baggage warnings are applied deterministically by the backend; focus on packing_items and weather.
+- MEDICAL: Use only medical_planning_required and accessibility_planning_required indicators from traveler_profile.
+- MEDICAL: Never include sensitive medical or accessibility note content in the final JSON.
+- SENSITIVE NOTES: Only transmitted to the model provider when share_sensitive_notes_with_model is true in the request profile.
 - DISCLAIMERS: Set rules_disclaimer to the demonstration disclaimer returned by baggage_rules.
 - FINAL ANSWER: Return ONLY valid JSON. No markdown, no prose outside JSON, no internal reasoning.
 

@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 
+from app.agent.enrichment import collect_profile_baggage_warnings, merge_stable_unique
 from app.models.profile import TravelerProfile
+from app.tools.baggage import get_rules_disclaimer
 
 
 @dataclass
@@ -9,8 +11,19 @@ class ToolContext:
     collected_baggage_warnings: list[str] = field(default_factory=list)
     rules_disclaimer: str | None = None
 
+    def __post_init__(self) -> None:
+        self.apply_deterministic_profile_baggage_rules()
+
+    def apply_deterministic_profile_baggage_rules(self) -> None:
+        if self.traveler_profile is None:
+            return
+
+        warnings = collect_profile_baggage_warnings(self.traveler_profile)
+        self.record_baggage_result(warnings, get_rules_disclaimer())
+
     def record_baggage_result(self, warnings: list[str], disclaimer: str) -> None:
-        for warning in warnings:
-            if warning not in self.collected_baggage_warnings:
-                self.collected_baggage_warnings.append(warning)
+        self.collected_baggage_warnings = merge_stable_unique(
+            self.collected_baggage_warnings,
+            warnings,
+        )
         self.rules_disclaimer = disclaimer

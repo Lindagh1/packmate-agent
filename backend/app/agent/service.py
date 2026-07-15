@@ -5,13 +5,13 @@ from openai import OpenAI
 
 from app.agent.config import LLMSettings
 from app.agent.context import ToolContext
+from app.agent.enrichment import enrich_packing_response
 from app.agent.exceptions import AgentResponseError, LLMConfigurationError, ParseError
 from app.agent.parser import clean_model_output, parse_packing_response
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.models.chat import PackingResponse
 from app.models.profile import TravelerProfile
-from app.tools.baggage import get_rules_disclaimer
 
 
 class AgentService:
@@ -53,16 +53,11 @@ class AgentService:
         response: PackingResponse,
         context: ToolContext,
     ) -> PackingResponse:
-        merged_baggage_warnings = list(
-            dict.fromkeys(context.collected_baggage_warnings + response.baggage_warnings)
-        )
-        disclaimer = context.rules_disclaimer or response.rules_disclaimer or get_rules_disclaimer()
-
-        return response.model_copy(
-            update={
-                "baggage_warnings": merged_baggage_warnings,
-                "rules_disclaimer": disclaimer,
-            }
+        return enrich_packing_response(
+            response=response,
+            profile=context.traveler_profile,
+            collected_baggage_warnings=context.collected_baggage_warnings,
+            rules_disclaimer=context.rules_disclaimer,
         )
 
     async def _parse_with_retries(

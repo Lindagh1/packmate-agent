@@ -52,19 +52,85 @@ def test_profile_for_logging_hides_medical_notes() -> None:
     logged = profile.for_logging()
 
     assert "medical_or_accessibility_notes" not in logged
-    assert logged["has_medical_or_accessibility_notes"] is True
+    assert logged["accessibility_planning_required"] is True
     assert "wheelchair" not in str(logged)
 
 
-def test_profile_for_agent_includes_medical_notes_for_llm() -> None:
+def test_profile_for_llm_excludes_medical_notes_by_default() -> None:
     profile = TravelerProfile(
         trip_type="leisure",
         baggage_type="cabin",
         activities=["walking"],
         clothing_preferences=["casual"],
-        medical_or_accessibility_notes=["Requires wheelchair assistance"],
+        medical_or_accessibility_notes=["Requires insulin refrigeration"],
     )
 
-    agent_view = profile.for_agent()
+    llm_view = profile.for_llm()
 
-    assert agent_view["medical_or_accessibility_notes"] == ["Requires wheelchair assistance"]
+    assert "medical_or_accessibility_notes" not in llm_view
+    assert llm_view["medical_planning_required"] is True
+    assert llm_view["share_sensitive_notes_with_model"] is False
+
+
+def test_traveler_profile_tool_excludes_medical_notes_by_default() -> None:
+    profile = TravelerProfile(
+        trip_type="leisure",
+        baggage_type="cabin",
+        activities=["walking"],
+        clothing_preferences=["casual"],
+        medical_or_accessibility_notes=["Requires insulin refrigeration"],
+    )
+
+    result = lookup_traveler_profile(profile)
+
+    assert "medical_or_accessibility_notes" not in result
+    assert result["medical_planning_required"] is True
+    assert "insulin" not in str(result)
+
+
+def test_profile_for_llm_includes_notes_when_explicitly_shared() -> None:
+    profile = TravelerProfile(
+        trip_type="leisure",
+        baggage_type="cabin",
+        activities=["walking"],
+        clothing_preferences=["casual"],
+        medical_or_accessibility_notes=["Requires insulin refrigeration"],
+        share_sensitive_notes_with_model=True,
+    )
+
+    llm_view = profile.for_llm()
+
+    assert llm_view["share_sensitive_notes_with_model"] is True
+    assert llm_view["sensitive_notes_shared_with_model"] is True
+    assert llm_view["medical_or_accessibility_notes"] == ["Requires insulin refrigeration"]
+
+
+def test_profile_for_logging_never_includes_notes_even_when_shared() -> None:
+    profile = TravelerProfile(
+        trip_type="leisure",
+        baggage_type="cabin",
+        activities=["walking"],
+        clothing_preferences=["casual"],
+        medical_or_accessibility_notes=["Requires insulin refrigeration"],
+        share_sensitive_notes_with_model=True,
+    )
+
+    logged = profile.for_logging()
+
+    assert "medical_or_accessibility_notes" not in logged
+    assert "insulin" not in str(logged)
+
+
+def test_derive_sensitive_considerations_uses_generic_wording() -> None:
+    profile = TravelerProfile(
+        trip_type="leisure",
+        baggage_type="cabin",
+        activities=["walking"],
+        clothing_preferences=["casual"],
+        medical_or_accessibility_notes=["Requires insulin refrigeration"],
+    )
+
+    considerations = profile.derive_sensitive_considerations()
+
+    assert any("medication transport" in item.lower() for item in considerations)
+    assert "insulin" not in " ".join(considerations).lower()

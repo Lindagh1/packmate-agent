@@ -8,7 +8,7 @@ def lookup_traveler_profile(profile: TravelerProfile | None) -> dict:
             "message": "No traveler profile was provided in this request.",
         }
 
-    payload = profile.for_agent()
+    payload = profile.for_llm()
     payload["available"] = True
     payload["considerations"] = _build_considerations(profile)
     return payload
@@ -37,10 +37,14 @@ def _build_considerations(profile: TravelerProfile) -> list[str]:
             "Items already available: " + ", ".join(profile.available_items) + "."
         )
 
-    if profile.medical_or_accessibility_notes:
+    if profile.medical_planning_required():
         considerations.append(
-            "Medical or accessibility needs were provided and should influence packing, "
-            "but must not be repeated verbatim in the final user-facing response."
+            "Medical planning is required; use generic guidance only in the final response."
+        )
+
+    if profile.accessibility_planning_required():
+        considerations.append(
+            "Accessibility planning is required; use generic guidance only in the final response."
         )
 
     return considerations
