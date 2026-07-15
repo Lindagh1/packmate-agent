@@ -52,6 +52,10 @@
       "warnings": [
         "Demo rule: spare lithium batteries and power banks must normally be carried in cabin baggage, not checked baggage.",
         "Demo rule: power banks above typical airline watt-hour limits may be refused; check your carrier's limit."
+      ],
+      "unknown_warnings": [
+        "Demo rule: spare lithium batteries and power banks are subject to airline safety restrictions; confirm allowed placement with your carrier.",
+        "Demo rule: power banks above typical airline watt-hour limits may be refused; check your carrier's limit."
       ]
     },
     {
@@ -63,6 +67,9 @@
       "warnings": [
         "Demo rule: essential medications should be kept in cabin baggage with supporting documentation when required.",
         "Demo rule: liquid medications may exceed the 100 ml cabin limit when medically necessary, subject to airline approval."
+      ],
+      "unknown_warnings": [
+        "Demo rule: essential medications may require supporting documentation; verify transport rules with your airline."
       ]
     },
     {

@@ -1,6 +1,13 @@
+from typing import Literal
+
 from app.models.chat import PackingItem, PackingResponse
 from app.models.profile import TravelerProfile
-from app.tools.baggage import get_rules_disclaimer, lookup_baggage_rules
+from app.tools.baggage import (
+    BaggageType,
+    get_rules_disclaimer,
+    lookup_baggage_rules,
+    resolve_baggage_type,
+)
 
 
 def merge_stable_unique(*sources: list[str]) -> list[str]:
@@ -12,8 +19,20 @@ def merge_stable_unique(*sources: list[str]) -> list[str]:
     return merged
 
 
+def baggage_type_precision_warning(language: str) -> str:
+    if language.lower().startswith("fr"):
+        return (
+            "Précisez si vous voyagez avec un bagage cabine, un bagage en soute "
+            "ou les deux pour valider les restrictions bagages."
+        )
+    return (
+        "Specify whether you are travelling with cabin baggage, checked baggage, "
+        "or both to validate baggage restrictions."
+    )
+
+
 def collect_profile_baggage_warnings(profile: TravelerProfile) -> list[str]:
-    """Apply general baggage demo rules when a profile with baggage_type is provided."""
+    """Apply baggage demo rules when a profile with an explicit baggage_type is provided."""
     result = lookup_baggage_rules(
         baggage_type=profile.baggage_type,
         include_general_rules=True,
@@ -23,7 +42,7 @@ def collect_profile_baggage_warnings(profile: TravelerProfile) -> list[str]:
 
 def collect_packing_item_warnings(
     packing_items: list[PackingItem],
-    baggage_type: str,
+    baggage_type: BaggageType,
 ) -> list[str]:
     """Analyze packing items deterministically against baggage demo rules."""
     warnings: list[str] = []
@@ -64,12 +83,18 @@ def enrich_packing_response(
     collected_baggage_warnings: list[str],
     rules_disclaimer: str | None,
 ) -> PackingResponse:
-    baggage_type = profile.baggage_type if profile is not None else "cabin"
+    baggage_type = resolve_baggage_type(profile)
 
     deterministic_baggage_warnings = merge_stable_unique(
         collected_baggage_warnings,
         collect_packing_item_warnings(response.packing_items, baggage_type),
     )
+
+    deterministic_general_warnings: list[str] = []
+    if baggage_type == "unknown":
+        deterministic_general_warnings.append(
+            baggage_type_precision_warning(response.language)
+        )
 
     deterministic_profile_considerations = profile.derive_sensitive_considerations() if profile else []
     safe_profile_considerations = filter_sensitive_note_leaks(
@@ -84,7 +109,10 @@ def enrich_packing_response(
                 deterministic_profile_considerations,
                 safe_profile_considerations,
             ),
-            "warnings": filter_sensitive_note_leaks(response.warnings, profile),
+            "warnings": merge_stable_unique(
+                filter_sensitive_note_leaks(response.warnings, profile),
+                deterministic_general_warnings,
+            ),
             "rules_disclaimer": rules_disclaimer or response.rules_disclaimer or get_rules_disclaimer(),
         }
     )
