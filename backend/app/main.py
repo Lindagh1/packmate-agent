@@ -31,7 +31,7 @@ async def weather(
 @app.post("/api/v1/chat", response_model=PackingResponse)
 async def chat(request: ChatRequest) -> PackingResponse:
     try:
-        return await agent_service.chat(request.message)
+        return await agent_service.chat(request.message, request.traveler_profile)
     except LLMConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except AgentResponseError as exc:

@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from app.agent.service import AgentService
 from app.main import app
 from app.models.chat import PackingResponse
 from app.models.weather import ForecastDay, WeatherResponse
+from tests.helpers import make_tool_call
 
 client = TestClient(app)
 
@@ -35,6 +37,9 @@ VALID_PACKING_PAYLOAD = {
         }
     ],
     "warnings": ["Bagage cabine : liquides limités à 100 ml"],
+    "baggage_warnings": [],
+    "profile_considerations": [],
+    "rules_disclaimer": "DEMONSTRATION RULES ONLY.",
     "language": "fr",
 }
 
@@ -51,14 +56,15 @@ def _configured_settings() -> LLMSettings:
 
 def _make_tool_call(
     tool_id: str = "call_weather_1",
+    name: str = "get_weather",
+    arguments: dict | None = None,
     city: str = "Rome",
     days: int = 7,
-) -> MagicMock:
-    tool_call = MagicMock()
-    tool_call.id = tool_id
-    tool_call.function.name = "get_weather"
-    tool_call.function.arguments = json.dumps({"city": city, "days": days})
-    return tool_call
+) -> SimpleNamespace:
+    if arguments is None:
+        arguments = {"city": city, "days": days}
+
+    return make_tool_call(tool_id, name, arguments)
 
 
 def _make_message(
@@ -88,7 +94,7 @@ async def test_agent_returns_valid_structured_response() -> None:
     mock_client = _mock_openai_client(
         [
             _make_completion(_make_message(tool_calls=[_make_tool_call()])),
-            _make_completion(_make_message(content=VALID_PACKING_JSON)),
+            _make_completion(_make_message(content=VALID_PACKING_JSON, tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(
@@ -123,7 +129,7 @@ async def test_agent_calls_weather_tool() -> None:
     mock_client = _mock_openai_client(
         [
             _make_completion(_make_message(tool_calls=[_make_tool_call(city="Rome", days=7)])),
-            _make_completion(_make_message(content=VALID_PACKING_JSON)),
+            _make_completion(_make_message(content=VALID_PACKING_JSON, tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
@@ -142,8 +148,8 @@ async def test_agent_retries_after_invalid_json_then_succeeds() -> None:
     mock_client = _mock_openai_client(
         [
             _make_completion(_make_message(tool_calls=[_make_tool_call()])),
-            _make_completion(_make_message(content="not valid json")),
-            _make_completion(_make_message(content=VALID_PACKING_JSON)),
+            _make_completion(_make_message(content="not valid json", tool_calls=None)),
+            _make_completion(_make_message(content=VALID_PACKING_JSON, tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
@@ -162,9 +168,9 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
     mock_client = _mock_openai_client(
         [
             _make_completion(_make_message(tool_calls=[_make_tool_call()])),
-            _make_completion(_make_message(content="still not json")),
-            _make_completion(_make_message(content='{"incomplete": true}')),
-            _make_completion(_make_message(content="nope")),
+            _make_completion(_make_message(content="still not json", tool_calls=None)),
+            _make_completion(_make_message(content='{"incomplete": true}', tool_calls=None)),
+            _make_completion(_make_message(content="nope", tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])

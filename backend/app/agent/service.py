@@ -4,11 +4,14 @@ from typing import Any
 from openai import OpenAI
 
 from app.agent.config import LLMSettings
+from app.agent.context import ToolContext
 from app.agent.exceptions import AgentResponseError, LLMConfigurationError, ParseError
 from app.agent.parser import clean_model_output, parse_packing_response
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.models.chat import PackingResponse
+from app.models.profile import TravelerProfile
+from app.tools.baggage import get_rules_disclaimer
 
 
 class AgentService:
@@ -45,17 +48,36 @@ class AgentService:
             ]
         return payload
 
+    def _enrich_response(
+        self,
+        response: PackingResponse,
+        context: ToolContext,
+    ) -> PackingResponse:
+        merged_baggage_warnings = list(
+            dict.fromkeys(context.collected_baggage_warnings + response.baggage_warnings)
+        )
+        disclaimer = context.rules_disclaimer or response.rules_disclaimer or get_rules_disclaimer()
+
+        return response.model_copy(
+            update={
+                "baggage_warnings": merged_baggage_warnings,
+                "rules_disclaimer": disclaimer,
+            }
+        )
+
     async def _parse_with_retries(
         self,
         client: OpenAI,
         messages: list[dict[str, Any]],
         content: str,
+        context: ToolContext,
     ) -> PackingResponse:
         current_content = content
 
         for attempt in range(self.MAX_PARSE_ATTEMPTS):
             try:
-                return parse_packing_response(current_content)
+                parsed = parse_packing_response(current_content)
+                return self._enrich_response(parsed, context)
             except ParseError as exc:
                 if attempt >= self.MAX_PARSE_ATTEMPTS - 1:
                     raise AgentResponseError(
@@ -88,9 +110,14 @@ class AgentService:
 
         raise AgentResponseError("Unable to parse agent response.")
 
-    async def chat(self, message: str) -> PackingResponse:
+    async def chat(
+        self,
+        message: str,
+        traveler_profile: TravelerProfile | None = None,
+    ) -> PackingResponse:
         self.settings.require_configured()
         client = self._get_client()
+        context = ToolContext(traveler_profile=traveler_profile)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": build_system_prompt()},
@@ -112,6 +139,7 @@ class AgentService:
                     tool_result = await execute_tool(
                         tool_call.function.name,
                         tool_call.function.arguments,
+                        context,
                     )
                     messages.append(
                         {
@@ -127,6 +155,7 @@ class AgentService:
                     client,
                     messages,
                     assistant_message.content,
+                    context,
                 )
 
         raise AgentResponseError(
