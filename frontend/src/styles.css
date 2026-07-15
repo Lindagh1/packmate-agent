@@ -1,0 +1,14 @@
+#root {
+  min-height: 100vh;
+}
+
+.pf-v6-c-page {
+  background-color: var(--pf-t--global--background--color--secondary--default);
+}
+
+@media (max-width: 768px) {
+  .pf-v6-c-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
