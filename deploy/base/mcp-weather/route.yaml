@@ -1,0 +1,22 @@
+# Optional Route for Gen AI Playground registration (HTTPS URL).
+# ClusterIP remains the in-cluster backend target.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: weather-mcp
+  labels:
+    app.kubernetes.io/name: weather-mcp
+    app.kubernetes.io/component: mcp
+  annotations:
+    haproxy.router.openshift.io/timeout: 60s
+spec:
+  to:
+    kind: Service
+    name: weather-mcp
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

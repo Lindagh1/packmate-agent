@@ -1,0 +1,23 @@
+# EXAMPLE ONLY — cluster-admin ConfigMap for OpenShift AI Gen AI Playground.
+# Do NOT apply during automated Packmate validation.
+# Replace ROUTE_HOST placeholders with real Route hosts after MCP deploy.
+#
+# Official OAI 3.4 registration mechanism:
+#   ConfigMap gen-ai-aa-mcp-servers in namespace redhat-ods-applications
+# Transport expected by Packmate servers: Streamable HTTP at /mcp
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+data:
+  Packmate-Weather-MCP: |
+    {
+      "url": "https://weather-mcp-packmate-lab.apps.EXAMPLE.COM/mcp",
+      "description": "Packmate demonstration weather MCP server (Open-Meteo). Tool: get_weather. No credentials required."
+    }
+  Packmate-Baggage-Policy-MCP: |
+    {
+      "url": "https://baggage-policy-mcp-packmate-lab.apps.EXAMPLE.COM/mcp",
+      "description": "Packmate demonstration baggage policy MCP server. Tools: check_baggage_rules, get_general_baggage_rules. Deterministic demo rules with mandatory disclaimer."
+    }

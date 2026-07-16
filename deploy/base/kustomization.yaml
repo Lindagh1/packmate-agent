@@ -5,6 +5,8 @@ resources:
   - configmap.yaml
   - backend
   - frontend
+  - mcp-weather
+  - mcp-baggage
 
 labels:
   - pairs:

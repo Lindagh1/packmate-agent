@@ -35,3 +35,11 @@
 - `scripts/security-check.sh` runs offline checks (tags, privileges, non-root, secrets-in-git, cluster-admin, key patterns).
 - OAuth proxy component stays optional and disabled by default in overlays.
 - Optional dev `LimitRange` example documents namespace default requests/limits; not enabled unless added to dev kustomization.
+
+## OpenShift AI recenter — MCP transport
+
+- Cluster audit (OAI Self-Managed **3.4.2**): no MCP-named CRDs; Playground registration is the platform ConfigMap `gen-ai-aa-mcp-servers` in `redhat-ods-applications` with JSON `{url, description}` per server key.
+- That ConfigMap was **absent** at audit time; registration remains a **cluster-admin / manual** step.
+- Packmate MCP servers implement **Streamable HTTP** via the official Python MCP SDK (`mcp.server.fastmcp.FastMCP.streamable_http_app()`), endpoint path **`/mcp`**.
+- SSE (`sse_app`) is not the primary Playground path; it remains available in the SDK for inspectors/debug but is not exposed as a separate Route in Packmate manifests.
+- Traveler profile stays **in-app only** (no shared MCP) to avoid leaking sensitive notes.
