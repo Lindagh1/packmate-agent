@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: packmate-oauth-proxy
+  labels:
+    app.kubernetes.io/name: packmate-oauth-proxy
+    app.kubernetes.io/component: oauth-proxy
+data:
+  OAUTH2_PROXY_HTTP_ADDRESS: ":8443"
+  OAUTH2_PROXY_UPSTREAM: http://packmate-frontend:8080
+  OAUTH2_PROXY_REDIRECT_URL: https://packmate.example.com/oauth2/callback
+  OAUTH2_PROXY_PROVIDER: openshift
+  OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+  OAUTH2_PROXY_COOKIE_SECURE: "true"
+  OAUTH2_PROXY_PASS_ACCESS_TOKEN: "false"
+  OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: "false"

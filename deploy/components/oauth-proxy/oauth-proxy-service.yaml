@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: packmate-oauth-proxy
+  labels:
+    app.kubernetes.io/name: packmate-oauth-proxy
+    app.kubernetes.io/component: oauth-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: packmate-oauth-proxy
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      protocol: TCP

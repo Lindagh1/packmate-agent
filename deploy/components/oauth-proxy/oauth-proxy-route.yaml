@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: packmate
+  labels:
+    app.kubernetes.io/name: packmate-oauth-proxy
+    app.kubernetes.io/component: oauth-proxy
+spec:
+  to:
+    kind: Service
+    name: packmate-oauth-proxy
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect

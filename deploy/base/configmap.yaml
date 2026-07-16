@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: packmate-config
+  labels:
+    app.kubernetes.io/name: packmate
+    app.kubernetes.io/component: config
+data:
+  BASE_URL: http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
+  MODEL: llama-32-3b-instruct
+  OTEL_SERVICE_NAME: packmate-backend
+  OTEL_TRACES_EXPORTER: none
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  PACKMATE_VERSION: dev

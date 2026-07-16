@@ -1,0 +1,52 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/name: packmate-backend
+    app.kubernetes.io/component: backend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: packmate-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the frontend may call the API.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: packmate-frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Cluster DNS (OpenShift dns operator namespace).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Fallback DNS namespace on vanilla Kubernetes / some clusters.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # LLM inference endpoint in the shared model namespace (document-only; not managed here).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: my-first-model
+      ports:
+        - protocol: TCP
+          port: 8080

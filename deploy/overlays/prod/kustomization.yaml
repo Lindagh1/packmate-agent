@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: packmate-prod
+
+resources:
+  - ../../base
+  - pdb-backend.yaml
+  - pdb-frontend.yaml
+
+images:
+  # Production images MUST be pinned to an immutable tag or digest — never :latest.
+  # Replace sha-prod with the CI-built tag (e.g. sha-a1b2c3d4) or pin by digest:
+  #
+  #   - name: quay.io/example/packmate-backend
+  #     newName: quay.io/example/packmate-backend
+  #     digest: sha256:0123456789abcdef...
+  #
+  - name: quay.io/example/packmate-backend
+    newName: quay.io/example/packmate-backend
+    newTag: sha-prod
+  - name: quay.io/example/packmate-frontend
+    newName: quay.io/example/packmate-frontend
+    newTag: sha-prod
+
+patches:
+  - path: replicas-patch.yaml
+  - path: configmap-patch.yaml
+
+# Optional: enable OpenShift OAuth proxy in front of the app.
+# components:
+#   - ../../components/oauth-proxy

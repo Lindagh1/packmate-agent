@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-oauth-proxy
+  labels:
+    app.kubernetes.io/name: packmate-oauth-proxy
+    app.kubernetes.io/component: oauth-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: packmate-oauth-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: packmate-oauth-proxy
+        app.kubernetes.io/component: oauth-proxy
+    spec:
+      serviceAccountName: packmate-frontend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth-proxy
+          image: quay.io/openshift/origin-oauth-proxy:PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: packmate-oauth-proxy
+          env:
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-oauth-proxy
+                  key: OAUTH2_PROXY_COOKIE_SECRET
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-oauth-proxy
+                  key: OAUTH2_PROXY_CLIENT_ID
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-oauth-proxy
+                  key: OAUTH2_PROXY_CLIENT_SECRET
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+      volumes:
+        - name: tmp
+          emptyDir: {}

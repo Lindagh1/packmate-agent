@@ -31,3 +31,10 @@ Branch: `packmate-v2`
 - **Result:** backend works without OTel collector; metrics always on
 - **Limits:** traces exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` or console exporter configured
 - **Next:** Phase 7 OpenShift manifests (already drafted under `deploy/`)
+
+## Phase 7 — OpenShift Kustomize
+
+- **Status:** completed
+- **Files:** `deploy/`, `scripts/render-manifests.sh`, `scripts/validate-manifests.sh`
+- **Validation:** `oc kustomize` OK; client dry-run OK; server dry-run blocked until namespaces exist (expected)
+- **Next:** Tekton Pipelines as Code
