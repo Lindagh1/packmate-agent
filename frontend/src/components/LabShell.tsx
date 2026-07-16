@@ -2,9 +2,8 @@ import type { ReactNode } from "react";
 
 export const LAB_STEPS = [
   { id: 1, label: "Trip details" },
-  { id: 2, label: "Traveler profile" },
-  { id: 3, label: "Packing recommendations" },
-  { id: 4, label: "Baggage guidance" },
+  { id: 2, label: "Packing recommendations" },
+  { id: 3, label: "Baggage guidance" },
 ] as const;
 
 interface LabShellProps {

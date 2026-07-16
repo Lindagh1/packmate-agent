@@ -19,10 +19,10 @@ type AppStatus = "idle" | "loading" | "success" | "error";
 
 function resolveActiveStep(status: AppStatus): number {
   if (status === "success") {
-    return 4;
+    return 3;
   }
   if (status === "loading") {
-    return 3;
+    return 2;
   }
   return 1;
 }

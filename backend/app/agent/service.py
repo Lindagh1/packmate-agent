@@ -58,6 +58,7 @@ class AgentService:
             profile=context.traveler_profile,
             collected_baggage_warnings=context.collected_baggage_warnings,
             rules_disclaimer=context.rules_disclaimer,
+            weather_response=context.weather_response,
         )
 
     async def _parse_with_retries(

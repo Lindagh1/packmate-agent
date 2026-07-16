@@ -366,3 +366,59 @@ async def test_share_sensitive_notes_true_allows_tool_result_transmission() -> N
 
     assert payload["sensitive_notes_shared_with_model"] is True
     assert payload["medical_or_accessibility_notes"] == ["Requires insulin refrigeration"]
+
+
+def test_enrich_response_adds_daily_forecast_from_weather_tool() -> None:
+    from datetime import date
+
+    from app.models.weather import ForecastDay, WeatherResponse
+
+    response = PackingResponse(
+        destination="Rome",
+        start_date=date(2026, 7, 21),
+        end_date=date(2026, 7, 22),
+        weather_summary=WeatherSummary(location="Rome", overview="Warm."),
+        packing_items=[
+            PackingItem(
+                name="Sunscreen",
+                category="hygiene",
+                quantity=1,
+                reason="Sun",
+                essential=True,
+            ),
+            PackingItem(
+                name="T-shirt",
+                category="clothes",
+                quantity=2,
+                reason="Hot",
+                essential=True,
+            ),
+        ],
+        warnings=[],
+        baggage_warnings=[],
+        profile_considerations=[],
+        rules_disclaimer=RULES_DISCLAIMER,
+        language="en",
+    )
+    weather = WeatherResponse(
+        location="Rome",
+        forecast=[
+            ForecastDay(date="2026-07-21", min="18°C", max="29°C", condition="Sunny"),
+            ForecastDay(date="2026-07-22", min="19°C", max="30°C", condition="Clear"),
+            ForecastDay(date="2026-07-23", min="17°C", max="28°C", condition="Cloudy"),
+        ],
+    )
+
+    enriched = enrich_packing_response(
+        response=response,
+        profile=None,
+        collected_baggage_warnings=[],
+        rules_disclaimer=RULES_DISCLAIMER,
+        weather_response=weather,
+    )
+
+    assert len(enriched.weather_summary.daily_forecast) == 2
+    assert enriched.weather_summary.daily_forecast[0].date == "2026-07-21"
+    assert enriched.packing_items[0].category == "Clothing"
+    assert enriched.packing_items[0].name == "T-shirt"
+    assert enriched.packing_items[1].category == "Toiletries"

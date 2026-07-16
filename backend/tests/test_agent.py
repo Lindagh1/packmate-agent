@@ -265,6 +265,35 @@ def test_parser_raises_on_invalid_json() -> None:
         parse_packing_response("not-json")
 
 
+def test_parser_coerces_stringified_list_fields() -> None:
+    """Some models emit list fields as JSON strings instead of arrays."""
+    payload = {
+        **VALID_PACKING_PAYLOAD,
+        "packing_items": json.dumps(VALID_PACKING_PAYLOAD["packing_items"]),
+        "baggage_warnings": "[]",
+        "profile_considerations": "[]",
+        "warnings": json.dumps(VALID_PACKING_PAYLOAD["warnings"]),
+        "weather_summary": json.dumps(VALID_PACKING_PAYLOAD["weather_summary"]),
+    }
+
+    result = parse_packing_response(json.dumps(payload))
+
+    assert result.destination == "Rome"
+    assert len(result.packing_items) == 1
+    assert result.packing_items[0].name == "T-shirt"
+    assert result.baggage_warnings == []
+    assert result.profile_considerations == []
+    assert result.warnings == ["Bagage cabine : liquides limités à 100 ml"]
+    assert result.weather_summary.location == "Rome"
+
+
+def test_parser_repairs_invalid_unicode_escapes() -> None:
+    broken = VALID_PACKING_JSON.replace("Rome", "Rom\\uXXXe", 1)
+    result = parse_packing_response(broken)
+
+    assert "Rom" in result.destination
+
+
 def test_clean_model_output_removes_thinking_tags() -> None:
     cleaned = clean_model_output("<think>x</think> hello")
 

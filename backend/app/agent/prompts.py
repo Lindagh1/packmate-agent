@@ -23,7 +23,13 @@ STRICT OUTPUT RULES:
 - LANGUAGE: Set the "language" field to the user's language code (e.g. "fr", "en").
 - DATES: Use ISO format YYYY-MM-DD for start_date and end_date.
 - TONE: Professional and concise in overview and reasons.
-- PACKING: Provide categorized items (Clothes, Shoes, Essentials, Documents, etc.).
+- WEATHER: Fill weather_summary from get_weather. Include a short overview plus daily_forecast
+  as an array of {{date, min, max, condition}} for each day of the trip when available.
+- PACKING: packing_items must be a coherent checklist. Prefer these categories in this order:
+  Clothing (t-shirts, trousers, shirts), Swimwear (swimsuit), Footwear, Toiletries
+  (sunscreen, toothbrush), Documents, Electronics, Accessories, Essentials.
+  Include practical everyday items suited to the weather and trip type. Use native list/array
+  values (never stringify JSON arrays).
 - PROFILE: Populate profile_considerations based on the traveler profile when available.
 - BAGGAGE: Final baggage warnings are applied deterministically by the backend; focus on packing_items and weather.
 - MEDICAL: Use only medical_planning_required and accessibility_planning_required indicators from traveler_profile.

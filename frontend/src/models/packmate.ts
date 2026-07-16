@@ -25,12 +25,20 @@ export interface PackingItem {
   essential: boolean;
 }
 
+export interface DailyForecast {
+  date: string;
+  min: string;
+  max: string;
+  condition: string;
+}
+
 export interface WeatherSummary {
   location: string;
   overview: string;
   min_temperature?: string | null;
   max_temperature?: string | null;
   conditions?: string | null;
+  daily_forecast?: DailyForecast[];
 }
 
 export interface PackingResponse {

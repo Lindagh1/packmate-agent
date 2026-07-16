@@ -92,6 +92,7 @@ async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
     if name == "get_weather":
         try:
             result = await get_weather(args["city"], args.get("days", 14))
+            context.record_weather_result(result)
             return json.dumps(result.model_dump())
         except CityNotFoundError as exc:
             return json.dumps({"error": str(exc)})

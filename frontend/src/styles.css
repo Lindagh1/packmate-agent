@@ -326,6 +326,25 @@ body {
   margin: 0.25rem 0 0;
 }
 
+.lab-weather-daily {
+  margin-top: 1rem;
+}
+
+.lab-packing-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.lab-packing-group__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lab-text);
+}
+
 .lab-empty {
   padding: 2rem;
   text-align: center;

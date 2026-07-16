@@ -14,6 +14,8 @@ _JSON_FENCE_PATTERN = re.compile(
     r"```(?:json)?\s*(.*?)\s*```",
     flags=re.DOTALL | re.IGNORECASE,
 )
+# Models sometimes emit \u escapes that are not valid 4-hex sequences.
+_INVALID_UNICODE_ESCAPE = re.compile(r"\\u(?![0-9a-fA-F]{4})")
 
 
 def clean_model_output(text: str) -> str:
@@ -34,11 +36,20 @@ def extract_json_text(text: str) -> str:
     return cleaned
 
 
+def sanitize_json_text(text: str) -> str:
+    """Repair common model JSON defects that break json.loads."""
+    return _INVALID_UNICODE_ESCAPE.sub(r"\\\\u", text)
+
+
 def parse_packing_response(text: str) -> PackingResponse:
+    extracted = extract_json_text(text)
     try:
-        payload = json.loads(extract_json_text(text))
-    except json.JSONDecodeError as exc:
-        raise ParseError(f"Invalid JSON: {exc.msg}") from exc
+        payload = json.loads(extracted)
+    except json.JSONDecodeError:
+        try:
+            payload = json.loads(sanitize_json_text(extracted))
+        except json.JSONDecodeError as exc:
+            raise ParseError(f"Invalid JSON: {exc.msg}") from exc
 
     try:
         return PackingResponse.model_validate(payload)
