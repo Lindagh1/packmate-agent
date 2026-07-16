@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { postChat } from "./api/packmateApi";
+import { LAB_STEPS } from "./components/LabShell";
 import { ApiError, type PackingResponse } from "./models/packmate";
 
 vi.mock("./api/packmateApi", () => ({
@@ -32,6 +33,18 @@ describe("App", () => {
     mockedPostChat.mockReset();
   });
 
+  it("renders the lab header and navigation steps", () => {
+    render(<App />);
+
+    expect(screen.getByText("Red Hat | Packmate Lab")).toBeInTheDocument();
+    expect(screen.getByText("AI-powered travel preparation")).toBeInTheDocument();
+    expect(screen.getByText("Create your packing plan")).toBeInTheDocument();
+
+    for (const step of LAB_STEPS) {
+      expect(screen.getByText(step.label)).toBeInTheDocument();
+    }
+  });
+
   it("shows a loading state while waiting for the backend", async () => {
     mockedPostChat.mockImplementation(
       () =>
@@ -48,12 +61,12 @@ describe("App", () => {
       "Je pars à Rome la semaine prochaine",
     );
     await user.selectOptions(screen.getByLabelText(/Baggage type/i), "cabin");
-    await user.click(screen.getByRole("button", { name: /Generate packing list/i }));
+    await user.click(screen.getByRole("button", { name: /Generate packing plan/i }));
 
     expect(screen.getByText(/Analyzing your trip/i)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText("Trip overview")).toBeInTheDocument();
+      expect(screen.getByText(/Packing plan: Rome/i)).toBeInTheDocument();
     });
   });
 
@@ -65,7 +78,7 @@ describe("App", () => {
 
     await user.type(screen.getByLabelText(/Travel message/i), "Trip to Rome");
     await user.selectOptions(screen.getByLabelText(/Baggage type/i), "cabin");
-    await user.click(screen.getByRole("button", { name: /Generate packing list/i }));
+    await user.click(screen.getByRole("button", { name: /Generate packing plan/i }));
 
     expect(await screen.findByText(/LLM is not configured/i)).toBeInTheDocument();
   });
@@ -75,7 +88,7 @@ describe("App", () => {
     render(<App />);
 
     await user.type(screen.getByLabelText(/Travel message/i), "Trip to Rome");
-    await user.click(screen.getByRole("button", { name: /Generate packing list/i }));
+    await user.click(screen.getByRole("button", { name: /Generate packing plan/i }));
 
     expect(await screen.findByText(/Baggage type is required/i)).toBeInTheDocument();
     expect(mockedPostChat).not.toHaveBeenCalled();

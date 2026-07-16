@@ -1,19 +1,7 @@
-import {
-  Card,
-  CardBody,
-  CardTitle,
-  DescriptionList,
-  DescriptionListDescription,
-  DescriptionListGroup,
-  DescriptionListTerm,
-  Grid,
-  GridItem,
-  Stack,
-  StackItem,
-} from "@patternfly/react-core";
 import type { PackingResponse } from "../models/packmate";
 import {
   BaggageWarnings,
+  ProfileConsiderations,
   RulesDisclaimer,
   WarningList,
 } from "./BaggageWarnings";
@@ -26,60 +14,61 @@ interface PackingResultsProps {
 
 export function PackingResults({ response }: PackingResultsProps) {
   return (
-    <Stack hasGutter>
-      <StackItem>
-        <Card>
-          <CardTitle>Trip overview</CardTitle>
-          <CardBody>
-            <DescriptionList isHorizontal>
-              <DescriptionListGroup>
-                <DescriptionListTerm>Destination</DescriptionListTerm>
-                <DescriptionListDescription>{response.destination}</DescriptionListDescription>
-              </DescriptionListGroup>
-              <DescriptionListGroup>
-                <DescriptionListTerm>Dates</DescriptionListTerm>
-                <DescriptionListDescription>
-                  {response.start_date} to {response.end_date}
-                </DescriptionListDescription>
-              </DescriptionListGroup>
-              <DescriptionListGroup>
-                <DescriptionListTerm>Language</DescriptionListTerm>
-                <DescriptionListDescription>{response.language}</DescriptionListDescription>
-              </DescriptionListGroup>
-            </DescriptionList>
-          </CardBody>
-        </Card>
-      </StackItem>
+    <article className="lab-report" aria-label="Packing plan report">
+      <h2 className="lab-report-title">
+        Packing plan: {response.destination}
+      </h2>
+      <p className="lab-report-meta">
+        {response.start_date} — {response.end_date} · Language: {response.language}
+      </p>
 
-      <StackItem>
-        <Grid hasGutter>
-          <GridItem span={12} lg={6}>
-            <WeatherSummary summary={response.weather_summary} />
-          </GridItem>
-          <GridItem span={12} lg={6}>
-            <WarningList warnings={response.warnings} title="General warnings" />
-          </GridItem>
-        </Grid>
-      </StackItem>
+      <section className="lab-report-section" aria-labelledby="weather-heading">
+        <h3 className="lab-report-section__title" id="weather-heading">
+          Weather summary
+        </h3>
+        <WeatherSummary summary={response.weather_summary} />
+      </section>
 
-      <StackItem>
+      {response.warnings.length > 0 && (
+        <section className="lab-report-section" aria-labelledby="warnings-heading">
+          <h3 className="lab-report-section__title" id="warnings-heading">
+            General warnings
+          </h3>
+          <WarningList warnings={response.warnings} />
+        </section>
+      )}
+
+      <section className="lab-report-section" aria-labelledby="packing-heading">
+        <h3 className="lab-report-section__title" id="packing-heading">
+          Packing list
+        </h3>
         <PackingList items={response.packing_items} />
-      </StackItem>
+      </section>
 
-      <StackItem>
-        <BaggageWarnings warnings={response.baggage_warnings} />
-      </StackItem>
+      {response.baggage_warnings.length > 0 && (
+        <section className="lab-report-section" aria-labelledby="baggage-heading">
+          <h3 className="lab-report-section__title" id="baggage-heading">
+            Baggage guidance
+          </h3>
+          <BaggageWarnings warnings={response.baggage_warnings} />
+        </section>
+      )}
 
-      <StackItem>
-        <WarningList
-          warnings={response.profile_considerations}
-          title="Profile considerations"
-        />
-      </StackItem>
+      {response.profile_considerations.length > 0 && (
+        <section className="lab-report-section" aria-labelledby="profile-heading">
+          <h3 className="lab-report-section__title" id="profile-heading">
+            Profile considerations
+          </h3>
+          <ProfileConsiderations items={response.profile_considerations} />
+        </section>
+      )}
 
-      <StackItem>
+      <section className="lab-report-section" aria-labelledby="disclaimer-heading">
+        <h3 className="lab-report-section__title" id="disclaimer-heading">
+          Rules disclaimer
+        </h3>
         <RulesDisclaimer disclaimer={response.rules_disclaimer} />
-      </StackItem>
-    </Stack>
+      </section>
+    </article>
   );
 }

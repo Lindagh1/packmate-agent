@@ -1,11 +1,4 @@
-import {
-  Alert,
-  AlertVariant,
-  Bullseye,
-  EmptyState,
-  EmptyStateBody,
-  Spinner,
-} from "@patternfly/react-core";
+import { Spinner } from "@patternfly/react-core";
 
 interface LoadingStateProps {
   message?: string;
@@ -13,12 +6,10 @@ interface LoadingStateProps {
 
 export function LoadingState({ message = "Analyzing your trip..." }: LoadingStateProps) {
   return (
-    <Bullseye style={{ minHeight: "12rem" }}>
-      <EmptyState variant="full">
-        <Spinner size="xl" aria-label="Loading" />
-        <EmptyStateBody>{message}</EmptyStateBody>
-      </EmptyState>
-    </Bullseye>
+    <div className="lab-loading" role="status" aria-live="polite">
+      <Spinner size="md" aria-label="Loading" />
+      <span>{message}</span>
+    </div>
   );
 }
 
@@ -29,8 +20,9 @@ interface ErrorStateProps {
 
 export function ErrorState({ title, message }: ErrorStateProps) {
   return (
-    <Alert variant={AlertVariant.danger} title={title} isInline>
-      {message}
-    </Alert>
+    <div className="lab-error" role="alert">
+      <p className="lab-error__title">{title}</p>
+      <p className="lab-error__message">{message}</p>
+    </div>
   );
 }

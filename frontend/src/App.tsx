@@ -1,19 +1,8 @@
 import "@patternfly/react-core/dist/styles/base.css";
-import {
-  Alert,
-  AlertVariant,
-  Bullseye,
-  EmptyState,
-  EmptyStateBody,
-  Grid,
-  GridItem,
-  Page,
-  PageSection,
-  Title,
-} from "@patternfly/react-core";
 import { useState } from "react";
 import { postChat } from "./api/packmateApi";
 import { ErrorState, LoadingState } from "./components/LoadingState";
+import { LabShell } from "./components/LabShell";
 import { PackingResults } from "./components/PackingResults";
 import { TripForm } from "./components/TripForm";
 import { defaultTripFormValues } from "./models/formDefaults";
@@ -27,6 +16,16 @@ import {
 } from "./models/packmate";
 
 type AppStatus = "idle" | "loading" | "success" | "error";
+
+function resolveActiveStep(status: AppStatus): number {
+  if (status === "success") {
+    return 4;
+  }
+  if (status === "loading") {
+    return 3;
+  }
+  return 1;
+}
 
 export default function App() {
   const [formValues, setFormValues] = useState<TripFormValues>(defaultTripFormValues);
@@ -69,40 +68,24 @@ export default function App() {
   };
 
   return (
-    <Page>
-      <PageSection isWidthLimited>
-        <Title headingLevel="h1" size="2xl">
-          Packmate
-        </Title>
-        <p style={{ marginTop: "0.5rem", maxWidth: "48rem" }}>
-          Intelligent packing recommendations powered by weather, traveler profile, and
-          deterministic baggage rules.
+    <LabShell activeStep={resolveActiveStep(status)}>
+      <div className="lab-content">
+        <h1 className="lab-page-title">Create your packing plan</h1>
+        <p className="lab-page-lead">
+          Enter your trip details and traveler profile to generate a structured packing
+          recommendation based on weather, profile, and deterministic baggage rules.
         </p>
-      </PageSection>
 
-      <PageSection isWidthLimited>
-        <Grid hasGutter>
-          <GridItem span={12} lg={5}>
-            <TripForm
-              values={formValues}
-              onChange={setFormValues}
-              onSubmit={handleSubmit}
-              isSubmitting={status === "loading"}
-              validationError={validationError}
-            />
-          </GridItem>
+        <TripForm
+          values={formValues}
+          onChange={setFormValues}
+          onSubmit={handleSubmit}
+          isSubmitting={status === "loading"}
+          validationError={validationError}
+        />
 
-          <GridItem span={12} lg={7}>
-            {status === "idle" && (
-              <Bullseye style={{ minHeight: "20rem" }}>
-                <EmptyState variant="full">
-                  <EmptyStateBody>
-                    Fill in your trip details and generate a structured packing list.
-                  </EmptyStateBody>
-                </EmptyState>
-              </Bullseye>
-            )}
-
+        {(status === "loading" || status === "success" || (status === "error" && requestError)) && (
+          <div className="lab-results-panel">
             {status === "loading" && <LoadingState />}
 
             {status === "error" && requestError && (
@@ -112,13 +95,19 @@ export default function App() {
             {status === "success" && response && <PackingResults response={response} />}
 
             {status === "success" && !response && (
-              <Alert variant={AlertVariant.warning} title="Empty response" isInline>
+              <div className="lab-empty" role="status">
                 The backend returned no packing data.
-              </Alert>
+              </div>
             )}
-          </GridItem>
-        </Grid>
-      </PageSection>
-    </Page>
+          </div>
+        )}
+
+        {status === "idle" && (
+          <div className="lab-empty" style={{ marginTop: "2rem" }} role="status">
+            Complete the form above and select Generate packing plan to view your report.
+          </div>
+        )}
+      </div>
+    </LabShell>
   );
 }

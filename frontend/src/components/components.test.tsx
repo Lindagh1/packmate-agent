@@ -51,6 +51,23 @@ describe("TripForm", () => {
     expect(screen.getByLabelText(/Trip type/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Baggage type/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /Share sensitive notes with model provider/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Generate packing plan/i })).toBeInTheDocument();
+  });
+
+  it("shows NOTE callout for sensitive data guidance", () => {
+    render(
+      <TripForm
+        values={defaultTripFormValues}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        isSubmitting={false}
+      />,
+    );
+
+    expect(screen.getByText("NOTE")).toBeInTheDocument();
+    expect(
+      screen.getByText(/not transmitted to the model by default/i),
+    ).toBeInTheDocument();
   });
 
   it("keeps sensitive consent disabled by default", () => {
@@ -68,7 +85,7 @@ describe("TripForm", () => {
     ).not.toBeChecked();
   });
 
-  it("shows a warning when sensitive consent is enabled", async () => {
+  it("shows CAUTION callout when sensitive consent is enabled", async () => {
     const user = userEvent.setup();
 
     function Wrapper() {
@@ -87,8 +104,9 @@ describe("TripForm", () => {
 
     await user.click(screen.getByRole("switch", { name: /Share sensitive notes with model provider/i }));
 
+    expect(screen.getByText("CAUTION")).toBeInTheDocument();
     expect(
-      screen.getByText(/Sensitive data transmission enabled/i),
+      screen.getByText(/transmitted to the model provider/i),
     ).toBeInTheDocument();
   });
 
@@ -110,19 +128,20 @@ describe("PackingResults", () => {
   it("displays structured packing response sections", () => {
     render(<PackingResults response={sampleResponse} />);
 
-    expect(screen.getByText("Trip overview")).toBeInTheDocument();
+    expect(screen.getByText(/Packing plan: Rome/i)).toBeInTheDocument();
     expect(screen.getAllByText("Rome").length).toBeGreaterThan(0);
     expect(screen.getByText("Weather summary")).toBeInTheDocument();
     expect(screen.getByText("Packing list")).toBeInTheDocument();
-    expect(screen.getByText("Baggage warnings")).toBeInTheDocument();
+    expect(screen.getByText("Baggage guidance")).toBeInTheDocument();
     expect(screen.getByText(/DEMONSTRATION RULES ONLY/i)).toBeInTheDocument();
   });
 });
 
 describe("BaggageWarnings", () => {
-  it("renders baggage warnings", () => {
+  it("renders baggage warnings in CAUTION callout", () => {
     render(<BaggageWarnings warnings={sampleResponse.baggage_warnings} />);
 
+    expect(screen.getByText("CAUTION")).toBeInTheDocument();
     expect(screen.getByText(/100 ml or less/i)).toBeInTheDocument();
   });
 });

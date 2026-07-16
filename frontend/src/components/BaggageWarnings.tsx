@@ -1,52 +1,42 @@
-import { Alert, AlertVariant, Card, CardBody, CardTitle, List, ListItem } from "@patternfly/react-core";
+import { Callout } from "./Callout";
 
 interface BaggageWarningsProps {
   warnings: string[];
-  title?: string;
 }
 
-export function BaggageWarnings({ warnings, title = "Baggage warnings" }: BaggageWarningsProps) {
+export function BaggageWarnings({ warnings }: BaggageWarningsProps) {
   if (warnings.length === 0) {
     return null;
   }
 
   return (
-    <Card>
-      <CardTitle>{title}</CardTitle>
-      <CardBody>
-        <List isPlain>
-          {warnings.map((warning) => (
-            <ListItem key={warning}>
-              <Alert variant={AlertVariant.warning} title={warning} isPlain isInline />
-            </ListItem>
-          ))}
-        </List>
-      </CardBody>
-    </Card>
+    <Callout variant="caution" label="CAUTION">
+      <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </Callout>
   );
 }
 
 interface WarningListProps {
   warnings: string[];
-  title: string;
 }
 
-export function WarningList({ warnings, title }: WarningListProps) {
+export function WarningList({ warnings }: WarningListProps) {
   if (warnings.length === 0) {
     return null;
   }
 
   return (
-    <Card>
-      <CardTitle>{title}</CardTitle>
-      <CardBody>
-        <List isPlain>
-          {warnings.map((warning) => (
-            <ListItem key={warning}>{warning}</ListItem>
-          ))}
-        </List>
-      </CardBody>
-    </Card>
+    <Callout variant="warning" label="WARNING">
+      <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </Callout>
   );
 }
 
@@ -56,8 +46,26 @@ interface DisclaimerProps {
 
 export function RulesDisclaimer({ disclaimer }: DisclaimerProps) {
   return (
-    <Alert variant={AlertVariant.info} title="Baggage rules disclaimer" isInline>
+    <Callout variant="note" label="NOTE">
       {disclaimer}
-    </Alert>
+    </Callout>
+  );
+}
+
+interface ProfileConsiderationsProps {
+  items: string[];
+}
+
+export function ProfileConsiderations({ items }: ProfileConsiderationsProps) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.875rem" }}>
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
   );
 }
