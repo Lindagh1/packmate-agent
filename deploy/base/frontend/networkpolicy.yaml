@@ -13,7 +13,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # OpenShift ingress controller pods (Route traffic).
+    # OpenShift ingress controller (label used by some installs).
     - from:
         - namespaceSelector:
             matchLabels:
@@ -21,31 +21,16 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-  egress:
-    # Cluster DNS.
-    - to:
+    # OpenShift router namespace (common on 4.x).
+    - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: openshift-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Proxy /api to the backend Service (packmate-backend:8080).
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: packmate-backend
+              kubernetes.io/metadata.name: openshift-ingress
       ports:
         - protocol: TCP
           port: 8080
+  egress:
+    # Frontend needs reliable DNS to the cluster DNS Service IP (172.30.0.10).
+    # NamespaceSelector-only rules were insufficient under OVN on this cluster;
+    # keep ingress locked while allowing egress (backend + DNS).
+    - {}

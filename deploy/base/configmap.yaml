@@ -6,6 +6,9 @@ metadata:
     app.kubernetes.io/name: packmate
     app.kubernetes.io/component: config
 data:
+  # BASE_URL/MODEL overridden from Secret packmate-llm in the backend Deployment.
+  # On this cluster the predictor Service is headless and answers on pod port 8080
+  # (not Service port 80). Secret BASE_URL must use :8080/v1.
   BASE_URL: http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
   MODEL: llama-32-3b-instruct
   OTEL_SERVICE_NAME: packmate-backend

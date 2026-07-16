@@ -1,30 +1,20 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
-namespace: packmate-dev
-
+namespace: packmate-lab
 resources:
-  - ../../base
-  # Optional namespace defaults — see limitrange.yaml and docs/SECURITY.md
-  # - limitrange.yaml
-
+- ../../base
 images:
-  - name: quay.io/example/packmate-backend
-    newName: quay.io/example/packmate-backend
-    newTag: sha-dev
-  - name: quay.io/example/packmate-frontend
-    newName: quay.io/example/packmate-frontend
-    newTag: sha-dev
-  - name: quay.io/example/packmate-weather-mcp
-    newName: quay.io/example/packmate-weather-mcp
-    newTag: sha-dev
-  - name: quay.io/example/packmate-baggage-policy-mcp
-    newName: quay.io/example/packmate-baggage-policy-mcp
-    newTag: sha-dev
-
+- name: quay.io/example/packmate-backend
+  newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-backend
+  digest: sha256:ec1218cbe4457400b6fb4c0734430d6cc36a77e9065b49ada483c44cb59b05dc
+- name: quay.io/example/packmate-frontend
+  newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-frontend
+  digest: sha256:a6517ab1a06aaf5273755da816c0d4f72482bbc53fc10a20185eda88b567a1be
+- name: quay.io/example/packmate-weather-mcp
+  newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-weather-mcp
+  digest: sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc
+- name: quay.io/example/packmate-baggage-policy-mcp
+  newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-baggage-policy-mcp
+  digest: sha256:005d4ccdcc2c06afdc545e4e6ff0d5b3fc02fd4f349e1287253efe7e44036458
 patches:
-  - path: configmap-patch.yaml
-
-# Optional: enable OpenShift OAuth proxy in front of the app.
-# components:
-#   - ../../components/oauth-proxy
+- path: configmap-patch.yaml

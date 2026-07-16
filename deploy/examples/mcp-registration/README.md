@@ -21,4 +21,6 @@ This directory contains an **example** ConfigMap. It is not applied by Packmate 
 
 ## Status on audited cluster (2026-07-16)
 
-`gen-ai-aa-mcp-servers` was **not present**. Playground MCP discovery was therefore not verified end-to-end.
+Live deploy applied `ConfigMap/gen-ai-aa-mcp-servers` in `redhat-ods-applications`
+with Packmate Weather + Baggage Policy HTTPS `/mcp` URLs. Playground **session**
+configuration remains manual — see `docs/implementation/PLAYGROUND_MANUAL.md`.

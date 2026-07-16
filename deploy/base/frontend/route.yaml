@@ -5,6 +5,9 @@ metadata:
   labels:
     app.kubernetes.io/name: packmate-frontend
     app.kubernetes.io/component: frontend
+  annotations:
+    # Chat + tool rounds against small models often exceed the default 30s.
+    haproxy.router.openshift.io/timeout: 180s
 spec:
   to:
     kind: Service

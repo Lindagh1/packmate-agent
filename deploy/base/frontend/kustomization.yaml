@@ -12,4 +12,5 @@ labels:
   - pairs:
       app.kubernetes.io/name: packmate-frontend
       app.kubernetes.io/component: frontend
-    includeSelectors: true
+    includeSelectors: false
+    includeTemplates: true

@@ -22,42 +22,7 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # Cluster DNS (OpenShift dns operator namespace).
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openshift-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Fallback DNS namespace on vanilla Kubernetes / some clusters.
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # LLM inference endpoint in the shared model namespace (document-only; not managed here).
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: my-first-model
-      ports:
-        - protocol: TCP
-          port: 8080
-    # In-namespace MCP servers (PACKMATE_TOOL_MODE=mcp).
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: weather-mcp
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: baggage-policy-mcp
-      ports:
-        - protocol: TCP
-          port: 8080
+    # Backend must reach cluster DNS, in-namespace MCP Services, and the model
+    # Service in my-first-model. Strict DNS Service-CIDR rules were unreliable
+    # under OVN on this cluster (same issue as weather-mcp). Keep ingress locked.
+    - {}

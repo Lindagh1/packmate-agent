@@ -1,0 +1,16 @@
+.venv
+tests
+__pycache__
+**/__pycache__
+**/__pycache__/**
+*.pyc
+**/*.pyc
+.pytest_cache
+**/.pytest_cache/**
+.env
+coverage
+.git
+.gitignore
+*.md
+Containerfile
+.containerignore

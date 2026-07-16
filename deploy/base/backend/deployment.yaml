@@ -34,6 +34,17 @@ spec:
             - configMapRef:
                 name: packmate-config
           env:
+            # Secret values override ConfigMap for LLM connection settings.
+            - name: BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-llm
+                  key: BASE_URL
+            - name: MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-llm
+                  key: MODEL
             - name: LITELLM_API_KEY
               valueFrom:
                 secretKeyRef:

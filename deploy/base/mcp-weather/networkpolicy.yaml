@@ -24,23 +24,8 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openshift-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Open-Meteo public API (HTTPS).
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
-      ports:
-        - protocol: TCP
-          port: 443
+    # Weather MCP must resolve and call the public Open-Meteo API.
+    # OpenShift OVN DNAT to the cluster DNS Service IP (172.30.0.10) did not
+    # match namespaceSelector-only rules reliably; allow all egress while
+    # keeping ingress locked to backend + router.
+    - {}

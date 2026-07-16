@@ -11,4 +11,5 @@ labels:
   - pairs:
       app.kubernetes.io/name: packmate-backend
       app.kubernetes.io/component: backend
-    includeSelectors: true
+    includeSelectors: false
+    includeTemplates: true
