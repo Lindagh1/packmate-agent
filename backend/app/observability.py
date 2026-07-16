@@ -53,6 +53,35 @@ BAGGAGE_WARNINGS = Counter(
     "packmate_baggage_warnings_total",
     "Total baggage warnings emitted",
 )
+STREAM_REQUESTS = Counter(
+    "packmate_stream_requests_total",
+    "Total streaming chat requests",
+)
+STREAM_COMPLETED = Counter(
+    "packmate_stream_completed_total",
+    "Total streaming chat completions",
+)
+STREAM_ERRORS = Counter(
+    "packmate_stream_errors_total",
+    "Total streaming chat errors",
+    ["code"],
+)
+STREAM_DISCONNECTS = Counter(
+    "packmate_stream_client_disconnects_total",
+    "Total streaming client disconnects",
+)
+STREAM_DURATION = Histogram(
+    "packmate_stream_duration_seconds",
+    "Streaming chat duration in seconds",
+)
+STREAM_HEARTBEATS = Counter(
+    "packmate_stream_heartbeats_total",
+    "Total streaming heartbeats emitted",
+)
+STREAM_TTFE = Histogram(
+    "packmate_stream_time_to_first_event_seconds",
+    "Time to first SSE event in seconds",
+)
 
 _tracer = None
 _otel_enabled = False

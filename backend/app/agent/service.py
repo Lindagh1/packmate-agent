@@ -11,6 +11,7 @@ from app.agent.exceptions import AgentResponseError, LLMConfigurationError, Pars
 from app.agent.parser import clean_model_output, parse_packing_response
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
+from app.agent.progress import ProgressCallback, ProgressStage
 from app.models.chat import PackingResponse
 from app.models.profile import TravelerProfile
 from app.observability import (
@@ -177,10 +178,21 @@ class AgentService:
                 f"LLM request failed: {type(exc).__name__}: {str(exc)[:240]}"
             ) from exc
 
+    async def _emit_progress(
+        self,
+        on_progress: ProgressCallback | None,
+        stage: ProgressStage,
+    ) -> None:
+        if on_progress is None:
+            return
+        await on_progress(stage)
+
     async def chat(
         self,
         message: str,
         traveler_profile: TravelerProfile | None = None,
+        *,
+        on_progress: ProgressCallback | None = None,
     ) -> PackingResponse:
         self.settings.require_configured()
         client = self._get_client()
@@ -194,6 +206,8 @@ class AgentService:
             {"role": "system", "content": build_system_prompt()},
             {"role": "user", "content": message},
         ]
+
+        await self._emit_progress(on_progress, "preparing")
 
         for _ in range(self.MAX_TOOL_ROUNDS):
             essentials_ready = self.ESSENTIAL_TOOLS.issubset(completed_tools)
@@ -210,6 +224,7 @@ class AgentService:
                         }
                     )
                     forced_final_nudge = True
+                await self._emit_progress(on_progress, "generating")
                 response = await self._llm_create(client, messages)
             else:
                 create_kwargs: dict[str, Any] = {
@@ -256,19 +271,24 @@ class AgentService:
                 messages.append(self._assistant_message_to_dict(assistant_message))
 
                 async def _run_one(tool_call: Any) -> tuple[Any, str, str]:
+                    name = tool_call.function.name
+                    if name == "get_weather":
+                        await self._emit_progress(on_progress, "weather")
+                    elif name == "baggage_rules":
+                        await self._emit_progress(on_progress, "baggage_rules")
                     cache_key = self._tool_cache_key(
-                        tool_call.function.name,
+                        name,
                         tool_call.function.arguments,
                     )
                     if cache_key in tool_cache:
-                        return tool_call, tool_cache[cache_key], tool_call.function.name
+                        return tool_call, tool_cache[cache_key], name
                     result = await execute_tool(
-                        tool_call.function.name,
+                        name,
                         tool_call.function.arguments,
                         context,
                     )
                     tool_cache[cache_key] = result
-                    return tool_call, result, tool_call.function.name
+                    return tool_call, result, name
 
                 executed = await asyncio.gather(
                     *[_run_one(tc) for tc in assistant_message.tool_calls]
@@ -285,6 +305,7 @@ class AgentService:
                 continue
 
             if assistant_message.content:
+                await self._emit_progress(on_progress, "generating")
                 return await self._parse_with_retries(
                     client,
                     messages,
@@ -303,6 +324,7 @@ class AgentService:
                 ),
             }
         )
+        await self._emit_progress(on_progress, "generating")
         final = await self._llm_create(client, messages)
         final_content = final.choices[0].message.content or ""
         if final_content:
