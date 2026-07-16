@@ -5,6 +5,8 @@ namespace: packmate-dev
 
 resources:
   - ../../base
+  # Optional namespace defaults — see limitrange.yaml and docs/SECURITY.md
+  # - limitrange.yaml
 
 images:
   - name: quay.io/example/packmate-backend

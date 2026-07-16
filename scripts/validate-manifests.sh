@@ -78,8 +78,19 @@ for doc in docs:
     if doc.get("kind") == "Secret":
         raise SystemExit(f"{path}: secrets must not be committed in rendered output")
 
-backend = next(d for d in docs if d.get("kind") == "Deployment" and meta_name(d) == "packmate-backend")
 frontend = next(d for d in docs if d.get("kind") == "Deployment" and meta_name(d) == "packmate-frontend")
+if overlay == "prod":
+    backend = next(
+        d for d in docs if d.get("kind") == "Rollout" and meta_name(d) == "packmate-backend"
+    )
+    if "AnalysisTemplate" not in kinds:
+        raise SystemExit(f"{path}: prod overlay must include AnalysisTemplate")
+    if any(d.get("kind") == "Deployment" and meta_name(d) == "packmate-backend" for d in docs):
+        raise SystemExit(f"{path}: prod must not include Deployment/packmate-backend")
+else:
+    backend = next(
+        d for d in docs if d.get("kind") == "Deployment" and meta_name(d) == "packmate-backend"
+    )
 if backend["spec"]["replicas"] != (2 if overlay == "prod" else 1):
     raise SystemExit(f"{path}: unexpected backend replica count")
 if frontend["spec"]["replicas"] != (2 if overlay == "prod" else 1):
