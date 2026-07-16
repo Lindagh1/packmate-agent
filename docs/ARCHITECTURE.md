@@ -15,7 +15,8 @@ flowchart TB
   end
   subgraph app [Packmate application namespace]
     Route --> Frontend
-    Frontend -->|ClusterIP /api| Backend
+    Frontend -->|SSE POST /api/v1/chat/stream| Backend
+    Frontend -.->|sync POST /api/v1/chat tests| Backend
     Backend --> ConfigMap
     Backend --> SecretLLM[Secret packmate-llm]
     WeatherMCP[weather-mcp /mcp]
@@ -44,6 +45,17 @@ flowchart TB
 4. Parse + validate with Pydantic
 5. Deterministically enrich baggage warnings, privacy filters, daily forecast, category order
 6. Return response
+
+## Chat transport (sync vs streaming)
+
+| Endpoint | Used by | Purpose |
+|----------|---------|---------|
+| `POST /api/v1/chat` | Tests, evals, in-cluster scripts | Single JSON response (`PackingResponse`) |
+| `POST /api/v1/chat/stream` | Public React UI | SSE with `started` / `progress` / `heartbeat` / `completed` / `error` |
+
+On AWS Classic ELB sandboxes the **idle** timeout is ~60s (no bytes on the wire). That is different from the Route/Nginx **total** timeout (180s). Streaming sends heartbeats at least every 10s so long agent runs stay alive without raising the ELB idle setting.
+
+SSE never streams: model chain-of-thought, `<think>` tags, medical notes, raw tool payloads, stack traces, or credentials.
 
 ## OpenShift AI lab path
 

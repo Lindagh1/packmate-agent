@@ -107,20 +107,20 @@ Root cause on RHDP / AWS Classic Load Balancer sandboxes:
 What Packmate does instead (compatible with the participant guide):
 
 - Keep Route annotation `haproxy.router.openshift.io/timeout: 180s` and Nginx proxy timeouts at 180s.
-- Shorten the agent loop: cache identical tool calls, omit `traveler_profile` when no profile is sent, force the final JSON once weather + baggage results exist, cap `max_tokens`.
-- Target wall-clock chat completion **under ~55s** so the public Route stays within the AWS idle budget.
+- **Public UI uses `POST /api/v1/chat/stream` (SSE)** with heartbeats ≤10s so the AWS ELB idle timer never fires during long LLM/tool runs.
+- Sync `POST /api/v1/chat` remains for tests, evals, and in-cluster scripts (can still hit ELB idle if called publicly on slow runs).
+- Agent loop still caches tools, omits unused profile tool, and forces JSON after weather + baggage.
 
-Verify:
+Verify streaming through the public Route:
 
 ```bash
-# Should stay well under 60s after the backend fix
-curl -sS -o /tmp/out.json -w 'http=%{http_code} total=%{time_total}s\n' --max-time 90 \
-  -X POST "https://$(oc -n packmate-lab get route packmate-frontend -o jsonpath='{.spec.host}')/api/v1/chat" \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"Je pars a Rome pendant quatre jours avec un bagage cabine."}'
+curl -sS -N --max-time 180 \
+  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+  -X POST "https://$(oc -n packmate-lab get route packmate-frontend -o jsonpath='{.spec.host}')/api/v1/chat/stream" \
+  -d '{"message":"Je pars a Rome pendant quatre jours avec un bagage cabine."}' | head -40
 ```
 
-If chat still exceeds ~60s under heavy model load, use the in-cluster proxy path for demos or ask a cluster admin to raise the AWS ELB idle timeout (not a Packmate namespace change).
+Expect `event: started` quickly, optional `progress` / `heartbeat`, then `completed` with PackingResponse JSON. Total duration may exceed 60s as long as heartbeats continue.
 
-For a hard public SLA (p95 &lt; 50s / 100% success), synchronous chat is insufficient on this sandbox: plan **streaming keep-alive** or an **async job** API. See performance section in `docs/implementation/CLUSTER_DEPLOYMENT_REPORT.md`.
+If heartbeats are missing, check Nginx `proxy_buffering off` for `/api/v1/chat/stream` and response headers `X-Accel-Buffering: no`.
 

@@ -31,8 +31,8 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Image | Tag | Digest |
 |-------|-----|--------|
-| packmate-backend | v2-dev | `sha256:ed74feec22ad25da07d66260090520e8cbf4cb4f33ad3b884eb42547e2f1d3a9` |
-| packmate-frontend | v2-dev | `sha256:a6517ab1a06aaf5273755da816c0d4f72482bbc53fc10a20185eda88b567a1be` |
+| packmate-backend | v2-dev | `sha256:0608f0d9f4546e07c8ab014451daf2273441543f08c59aaf68bc97b8af6fd4bd` |
+| packmate-frontend | v2-dev | `sha256:cdf68e4b6d5f9393f747e430e9a432ec352fbe17b61eddb65cce9d3037b7b3e7` |
 | packmate-weather-mcp | v2-dev | `sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc` |
 | packmate-baggage-policy-mcp | v2-dev | `sha256:005d4ccdcc2c06afdc545e4e6ff0d5b3fc02fd4f349e1287253efe7e44036458` |
 
@@ -106,62 +106,41 @@ Scénario fictif (sans notes médicales) : Rome, 4 jours, bagage cabine, marche.
 | Backend `/health` `/ready` `/metrics` | 200 |
 | Frontend Route GET `/` | 200 |
 | Proxy frontend → `/api/v1/chat` (depuis le pod frontend, sans port-forward) | **OK** |
-| Route publique `POST /api/v1/chat` (campagne 10 scénarios) | Voir **Performance Route publique** ci-dessous |
+| Route publique `POST /api/v1/chat/stream` | Voir **Performance Route publique — streaming SSE** |
 | Réponse (succès) | destination + météo + packing items + baggage warnings/disclaimer quand requis |
 
 Logs backend contrôlés : pas de Bearer token, pas de phrase utilisateur complète dans les logs échantillonnés.
 
-## Performance Route publique (campagne 10 requêtes)
+## Performance Route publique — streaming SSE (post-deploy)
 
-Date de mesure : 2026-07-16 (backend `sha256:ed74feec…`, `parallel_tool_calls=False`, `max_tokens=1280`).
+Date : 2026-07-16
+Images : backend `sha256:0608f0d9…` · frontend `sha256:cdf68e4b…`
+Endpoint public : `POST /api/v1/chat/stream` (UI) ; sync `/api/v1/chat` conservé pour tests.
 
-Scénarios fictifs : Rome cabine, Oslo hiver, business Frankfurt, randonnée, powerbank checked, liquide cabine, Rome court, Lisbonne, Oslo cabine, Barcelone + batterie.
-
-### Statistiques (toutes requêtes, y compris coupures ELB)
-
-| Métrique | Valeur |
-|----------|--------|
-| Succès | **7 / 10 (70 %)** |
-| Échecs | 3 (`rome_cabin`, `powerbank_checked`, `barcelona_battery`) — TLS EOF / idle ~60s |
-| min | 23.2 s |
-| moyenne | 38.4 s |
-| médiane (p50) | 31.1 s |
-| p90 | 60.2 s |
-| p95 | 60.2 s |
-| max | 60.3 s |
-
-### Parmi les 7 succès HTTP 200
+### Campagne 15 scénarios (Route publique)
 
 | Métrique | Valeur |
 |----------|--------|
-| min–max | 23.2–40.0 s |
-| médiane | ≈26.4 s |
-| météo | présente sur tous les succès concernés |
-| baggage warnings / disclaimer | présents sur les scénarios cabine/liquides/business |
+| Connexions avec `started` | **100 %** (15/15) |
+| Flux terminés (`completed` ou `error` structuré) | **100 %** |
+| `completed` métier OK | 11/15 (73 %) |
+| Erreurs métier structurées (`agent_error`) | 4/15 (parse/LLM — transport OK) |
+| Coupures idle ELB / EOF ~60s | **0** |
+| Contenu sensible dans le flux | **0** |
+| Heartbeat max gap estimé | **10 s** |
+| TTFE (8 samples) | min 0.33 s · moy 0.38 s · p95 0.43 s · max 0.43 s |
+| Durée min / médiane / max | 24.0 s / 31.1 s / 115.1 s |
+| Requêtes **>60 s** avec `completed` | **≥1** (`rome_short` ≈60.7 s) |
+| Requêtes longues avec heartbeats puis `error` | plusieurs (ex. hiking ≈115 s) — prouve la survie idle |
 
-### Critères lab (p95 &lt; 50s, max &lt; 58s, succès 100 %)
+### Critères transport vs métier
 
-**Non atteints** sur la Route publique à cause de l’idle AWS Classic ELB (~60s), pas de Nginx ni de l’annotation Route 180s.
+- Transport streaming : **PASS** (started, heartbeats, fin structurée, pas d’idle EOF).
+- Métier 100 % PackingResponse : **non atteint** sur 4 scénarios (erreurs agent assainies) — hors scope du fix idle ELB.
 
-Mesures in-cluster (sans ELB) : `rome_cabin` ≈48s OK ; certains scénarios powerbank peuvent dépasser 60–100s ou échouer au parse JSON si la génération est trop longue — le plafond ELB coupe avant la fin.
+### Recommandation
 
-### Optimisations synchrones déjà appliquées
-
-- Cache des tool calls identiques ; omit `traveler_profile` sans profil
-- Force JSON dès weather + baggage obtenus
-- `parallel_tool_calls=False` (le modèle refuse les multi tool-calls)
-- Capture `ExceptionGroup` MCP → plus de 500 non gérés
-- `max_tokens=1280` ; outils MCP bagages en parallèle quand `include_general_rules`
-
-### Risque ELB restant
-
-Toute requête dont le TTFB dépasse ~60s sans bytes est coupée par l’ELB, même si HAProxy/Nginx sont à 180s.
-
-### Recommandation opérationnelle
-
-1. Démos / validation participante : privilégier des prompts typiques (Rome court, Oslo, business, liquides) — **stables &lt; 40s**.
-2. Garantie stricte p95 &lt; 50s / succès 100 % via Route publique : **nécessite streaming (keep-alive) ou API asynchrone** — non implémenté automatiquement ici.
-3. Alternative cluster-admin (hors lab) : monter l’idle timeout AWS Classic ELB.
+Utiliser le streaming pour toute démo Route publique. Conserver sync pour pytest/evals. L’idle AWS ELB n’est plus un bloqueur pour le parcours UI.
 
 ## Validation Workbench / Playground
 
@@ -198,8 +177,7 @@ Toute requête dont le TTFB dépasse ~60s sans bytes est coupée par l’ELB, m�
 - Création Workbench `packmate-code-server` (UI)
 - Session Gen AI Playground (sélection modèle, auth MCP, prompts, export)
 - Vérification visuelle AI asset endpoints / Playground après ConfigMap
-- Streaming / job asynchrone si une SLA publique stricte &lt; 50s est exigée
-- Option admin : idle timeout AWS ELB (hors `packmate-lab`)
+- Amélioration du taux de `completed` métier (erreurs agent parse/LLM) — distinct du transport streaming
 
 ## Commandes de vérification
 

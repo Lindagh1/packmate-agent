@@ -82,6 +82,7 @@ evaluations/scripts/run_deterministic_gate.sh
 2. Reset Playground chat / reload exported instructions.
 3. Do not delete shared model namespace.
 4. Optional: delete lab namespace Deployments only if instructor owns that namespace.
+5. Prefer demos via **SSE** `POST /api/v1/chat/stream` on the public Route so AWS Classic ELB idle (~60s) does not cut long chats; sync `/api/v1/chat` remains for tests.
 
 ## Solutions / optional by version
 

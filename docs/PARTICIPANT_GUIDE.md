@@ -274,6 +274,25 @@ cd frontend && npm run dev -- --host 0.0.0.0 --port 5173
 
 5. Use Workbench port forwarding / routes as provided by the platform.
 
+6. **Streaming exercise (public UI path):**
+
+```bash
+curl -sS -N --max-time 180 \
+  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+  -X POST http://127.0.0.1:8000/api/v1/chat/stream \
+  -d '{"message":"Je pars a Rome pendant quatre jours avec un bagage cabine."}'
+```
+
+Observe in order:
+
+- [ ] `event: started` appears within a few seconds
+- [ ] `event: progress` with `weather` and/or `baggage_rules` when tools run
+- [ ] `event: heartbeat` if the model takes longer than ~10s
+- [ ] `event: completed` with a PackingResponse (destination + packing_items)
+- [ ] No `<think>` / chain-of-thought / medical notes in the stream
+
+The React UI calls `/api/v1/chat/stream` (not the sync endpoint). Cancel uses `AbortController`.
+
 ### Expected result
 
 UI returns packing plans; MCP mode calls remote tools without duplicating rule logic.

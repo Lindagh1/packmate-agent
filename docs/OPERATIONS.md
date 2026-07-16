@@ -24,6 +24,20 @@
 | `PACKMATE_BAGGAGE_MCP_URL` | `http://baggage-policy-mcp:8080/mcp` | Streamable HTTP |
 | `PACKMATE_MCP_TIMEOUT_SECONDS` | `10` | |
 | `PACKMATE_MCP_MAX_RETRIES` | `2` | |
+| `PACKMATE_STREAM_HEARTBEAT_SECONDS` | `10` | Max silence between SSE frames |
+
+## Chat endpoints
+
+| Endpoint | Response | Notes |
+|----------|----------|-------|
+| `POST /api/v1/chat` | `application/json` PackingResponse | Sync; keep for tests/evals |
+| `POST /api/v1/chat/stream` | `text/event-stream` | Public UI; heartbeats defeat AWS ELB idle ~60s |
+
+Streaming smoke (Compose or port-forward):
+
+```bash
+PACKMATE_API=http://127.0.0.1:8000 bash scripts/test-streaming-smoke.sh
+```
 
 ## Local compose
 

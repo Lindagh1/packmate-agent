@@ -184,11 +184,11 @@ logs or screenshots.
 | Field | Value |
 |-------|--------|
 | Action UI | Browser or Workbench curl |
-| Value | Frontend Route host from `oc get route packmate-frontend -n packmate-lab` ; GET `/` and POST `/api/v1/chat` with a short fictional trip |
-| Expected | GET 200; chat 200 with PackingResponse under ~50–55s when possible |
-| Validation | Destination + weather + packing items; baggage warnings/disclaimer when cabin/liquids/battery apply |
-| Common issue | Chat near 60s fails on AWS Classic ELB idle — see `docs/TROUBLESHOOTING.md` |
-| Screenshot | `[Screenshot required: Packmate UI or curl HTTP 200 via public Route]` |
+| Value | Frontend Route host from `oc get route packmate-frontend -n packmate-lab` ; GET `/` and **SSE** `POST /api/v1/chat/stream` |
+| Expected | GET 200; stream emits `started` quickly, optional `progress`/`heartbeat`, then `completed` PackingResponse (total time may exceed 60s) |
+| Validation | Destination + weather + packing items; baggage warnings/disclaimer when cabin/liquids/battery apply; no think tags in stream |
+| Common issue | Missing heartbeats → check Nginx stream location buffering; sync `/api/v1/chat` can still idle-out on ELB |
+| Screenshot | `[Screenshot required: SSE started/completed via public Route]` |
 
 ---
 

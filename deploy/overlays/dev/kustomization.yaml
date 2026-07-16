@@ -6,10 +6,10 @@ resources:
 images:
 - name: quay.io/example/packmate-backend
   newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-backend
-  digest: sha256:ed74feec22ad25da07d66260090520e8cbf4cb4f33ad3b884eb42547e2f1d3a9
+  digest: sha256:0608f0d9f4546e07c8ab014451daf2273441543f08c59aaf68bc97b8af6fd4bd
 - name: quay.io/example/packmate-frontend
   newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-frontend
-  digest: sha256:a6517ab1a06aaf5273755da816c0d4f72482bbc53fc10a20185eda88b567a1be
+  digest: sha256:cdf68e4b6d5f9393f747e430e9a432ec352fbe17b61eddb65cce9d3037b7b3e7
 - name: quay.io/example/packmate-weather-mcp
   newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-weather-mcp
   digest: sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc
