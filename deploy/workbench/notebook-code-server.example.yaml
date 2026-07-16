@@ -1,0 +1,41 @@
+---
+# Example Notebook CR for a code-server style OpenShift AI Workbench.
+# REFERENCE ONLY — Packmate CI does not apply this file.
+# Prefer creating the Workbench via the OpenShift AI dashboard (see README.md).
+#
+# Before manual apply:
+#   1. Replace PLACEHOLDER image with your cluster's ODH/RHODS code-server or VS Code image.
+#   2. Adjust namespace, CPU, memory, and storage for your lab quota.
+#   3. oc apply -f deploy/workbench/notebook-code-server.example.yaml -n packmate-lab
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: packmate-dev
+  labels:
+    app: packmate-dev
+    app.kubernetes.io/part-of: packmate
+    opendatahub.io/dashboard: "true"
+  annotations:
+    notebooks.opendatahub.io/inject-cluster-wide-trusted-ca: "true"
+spec:
+  template:
+    spec:
+      containers:
+        - name: packmate-dev
+          # PLACEHOLDER — replace with your catalog image, e.g. ODH/RHODS code-server workbench image
+          image: quay.io/opendatahub/workbench-images:PLACEHOLDER-codeserver
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 8Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /opt/app-root/src
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: packmate-dev
