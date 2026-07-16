@@ -1,6 +1,7 @@
 import "@patternfly/react-core/dist/styles/base.css";
-import { useState } from "react";
-import { postChat } from "./api/packmateApi";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@patternfly/react-core";
+import { postChatStream, progressLabel, type StreamProgressStage } from "./api/packmateApi";
 import { ErrorState, LoadingState } from "./components/LoadingState";
 import { LabShell } from "./components/LabShell";
 import { PackingResults } from "./components/PackingResults";
@@ -33,10 +34,27 @@ export default function App() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [response, setResponse] = useState<PackingResponse | null>(null);
+  const [progressStage, setProgressStage] = useState<StreamProgressStage | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStatus("idle");
+    setProgressStage(null);
+    setRequestError(null);
+  };
 
   const handleSubmit = async () => {
     setValidationError(null);
     setRequestError(null);
+    setProgressStage(null);
 
     let request;
     try {
@@ -49,13 +67,26 @@ export default function App() {
       return;
     }
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setStatus("loading");
 
     try {
-      const result = await postChat(request);
+      const result = await postChatStream(request, {
+        signal: controller.signal,
+        onProgress: (stage) => setProgressStage(stage),
+        onStarted: () => setProgressStage((current) => current ?? "preparing"),
+      });
       setResponse(result);
       setStatus("success");
+      setProgressStage(null);
     } catch (error) {
+      if (controller.signal.aborted) {
+        setStatus("idle");
+        setProgressStage(null);
+        return;
+      }
       if (error instanceof ApiError) {
         setRequestError(error.detail);
       } else if (error instanceof NetworkError) {
@@ -64,6 +95,11 @@ export default function App() {
         setRequestError("Unexpected error while generating the packing list.");
       }
       setStatus("error");
+      setProgressStage(null);
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
   };
 
@@ -86,10 +122,26 @@ export default function App() {
 
         {(status === "loading" || status === "success" || (status === "error" && requestError)) && (
           <div className="lab-results-panel">
-            {status === "loading" && <LoadingState />}
+            {status === "loading" && (
+              <>
+                <LoadingState message={progressLabel(progressStage)} />
+                <div style={{ marginTop: "1rem" }}>
+                  <Button variant="secondary" onClick={handleCancel}>
+                    Cancel request
+                  </Button>
+                </div>
+              </>
+            )}
 
             {status === "error" && requestError && (
-              <ErrorState title="Request failed" message={requestError} />
+              <>
+                <ErrorState title="Request failed" message={requestError} />
+                <div style={{ marginTop: "1rem" }}>
+                  <Button variant="primary" onClick={handleSubmit}>
+                    Try again
+                  </Button>
+                </div>
+              </>
             )}
 
             {status === "success" && response && <PackingResults response={response} />}
