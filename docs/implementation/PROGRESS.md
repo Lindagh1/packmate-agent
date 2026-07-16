@@ -38,3 +38,19 @@ Branch: `packmate-v2`
 - **Files:** `deploy/`, `scripts/render-manifests.sh`, `scripts/validate-manifests.sh`
 - **Validation:** `oc kustomize` OK; client dry-run OK; server dry-run blocked until namespaces exist (expected)
 - **Next:** Tekton Pipelines as Code
+
+## Phases 8–12
+
+- **Status:** completed (local artifacts + dry-runs)
+- Tekton PaC, Argo CD apps, Rollouts canary, security checks, full lab docs
+- Cluster CRDs missing for Argo CD Applications and Rollouts (documented)
+- Final report: `docs/implementation/FINAL_REPORT.md`
+
+## Final validation
+
+- Backend: 84 pytest passed (run from `backend/`)
+- Evals: 0.9559 pass @ 0.90
+- Frontend: 18 tests, lint/build OK
+- Compose smoke OK
+- Security check OK
+- Stopped before real apply/push
