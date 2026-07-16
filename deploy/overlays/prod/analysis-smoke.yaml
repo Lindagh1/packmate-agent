@@ -1,0 +1,78 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: packmate-backend-smoke
+  labels:
+    app.kubernetes.io/name: packmate-backend
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: packmate
+spec:
+  metrics:
+    - name: health
+      interval: 20s
+      count: 3
+      successCondition: result == "200"
+      failureLimit: 2
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                securityContext:
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: smoke
+                    image: curlimages/curl:8.5.0
+                    imagePullPolicy: IfNotPresent
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      runAsNonRoot: true
+                      capabilities:
+                        drop:
+                          - ALL
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        set -euo pipefail
+                        curl -sf --max-time 10 "http://packmate-backend-canary:8080/health"
+                        curl -sf --max-time 10 "http://packmate-backend-canary:8080/ready"
+                        echo "200"
+    - name: ready
+      interval: 20s
+      count: 3
+      successCondition: result == "200"
+      failureLimit: 2
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                securityContext:
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: smoke
+                    image: curlimages/curl:8.5.0
+                    imagePullPolicy: IfNotPresent
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      runAsNonRoot: true
+                      capabilities:
+                        drop:
+                          - ALL
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        curl -sf --max-time 10 "http://packmate-backend-canary:8080/ready"
+                        echo "200"

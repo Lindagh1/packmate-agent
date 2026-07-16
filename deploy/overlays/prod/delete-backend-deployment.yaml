@@ -1,0 +1,6 @@
+# Prod uses an Argo Rollout for the backend; remove the base Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-backend
+$patch: delete

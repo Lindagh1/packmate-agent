@@ -1,0 +1,102 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/name: packmate-backend
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: packmate
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: packmate-backend
+  strategy:
+    canary:
+      stableService: packmate-backend
+      canaryService: packmate-backend-canary
+      steps:
+        - setWeight: 10
+        - analysis:
+            templates:
+              - templateName: packmate-backend-smoke
+        - pause: {}
+        - setWeight: 50
+        - analysis:
+            templates:
+              - templateName: packmate-backend-smoke
+              # Optional Prometheus gate (requires metrics and a reachable Prometheus):
+              # - templateName: packmate-backend-prometheus
+              #   args:
+              #     - name: prometheus-address
+              #       value: http://prometheus-k8s.openshift-monitoring.svc:9090
+        - pause: {}
+        - setWeight: 100
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: packmate-backend
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: packmate-backend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: quay.io/example/packmate-backend:PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: packmate-config
+          env:
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: packmate-llm
+                  key: LITELLM_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}

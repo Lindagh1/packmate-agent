@@ -1,0 +1,18 @@
+# Stable Service for Argo Rollouts canary (replaces base Service via patch).
+apiVersion: v1
+kind: Service
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/name: packmate-backend
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: packmate
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: packmate-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

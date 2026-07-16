@@ -1,0 +1,29 @@
+# Optional Prometheus analysis — not wired into the default canary steps.
+# Pass prometheus-address when referencing this template from a Rollout step.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: packmate-backend-prometheus
+  labels:
+    app.kubernetes.io/name: packmate-backend
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: packmate
+spec:
+  args:
+    - name: prometheus-address
+      value: http://prometheus-k8s.openshift-monitoring.svc:9090
+    - name: error-rate-threshold
+      value: "0.05"
+  metrics:
+    - name: http-error-rate
+      interval: 1m
+      count: 5
+      successCondition: result <= {{args.error-rate-threshold}}
+      failureLimit: 3
+      provider:
+        prometheus:
+          address: "{{args.prometheus-address}}"
+          query: |
+            sum(rate(http_requests_total{service="packmate-backend-canary",status=~"5.."}[2m]))
+            /
+            clamp_min(sum(rate(http_requests_total{service="packmate-backend-canary"}[2m])), 0.001)
