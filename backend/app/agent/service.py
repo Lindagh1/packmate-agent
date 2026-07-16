@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -24,7 +25,9 @@ from app.observability import (
 
 
 class AgentService:
-    MAX_TOOL_ROUNDS = 5
+    # Small instruct models may re-call tools after valid results; keep headroom
+    # and force a final JSON answer when the tool budget is exhausted.
+    MAX_TOOL_ROUNDS = 8
     MAX_PARSE_ATTEMPTS = 3
 
     def __init__(
@@ -113,16 +116,21 @@ class AgentService:
                     }
                 )
 
-                correction = self._llm_create(client, messages)
+                correction = await self._llm_create(client, messages)
                 current_content = correction.choices[0].message.content or ""
 
         raise AgentResponseError("Unable to parse agent response.")
 
-    def _llm_create(self, client: OpenAI, messages: list[dict[str, Any]], **kwargs: Any):
+    async def _llm_create(
+        self, client: OpenAI, messages: list[dict[str, Any]], **kwargs: Any
+    ):
+        # Run the sync OpenAI client off the event loop so /health and /ready
+        # stay responsive during long model/tool rounds.
         timer = Timer()
         try:
             with span("llm.chat.completions", {"status": "started"}):
-                response = client.chat.completions.create(
+                response = await asyncio.to_thread(
+                    client.chat.completions.create,
                     model=self.settings.model,
                     messages=messages,
                     **kwargs,
@@ -151,7 +159,7 @@ class AgentService:
         ]
 
         for _ in range(self.MAX_TOOL_ROUNDS):
-            response = self._llm_create(
+            response = await self._llm_create(
                 client,
                 messages,
                 tools=TOOL_DEFINITIONS,
@@ -183,6 +191,27 @@ class AgentService:
                     assistant_message.content,
                     context,
                 )
+
+        # Force a schema JSON answer without further tool calls (small models).
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Stop calling tools. Using the tool results already provided, "
+                    "return ONLY valid JSON matching the required schema. "
+                    "No markdown fences or explanations."
+                ),
+            }
+        )
+        final = await self._llm_create(client, messages)
+        final_content = final.choices[0].message.content or ""
+        if final_content:
+            return await self._parse_with_retries(
+                client,
+                messages,
+                final_content,
+                context,
+            )
 
         raise AgentResponseError(
             "Agent exceeded maximum tool rounds without a final answer."

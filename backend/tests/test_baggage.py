@@ -295,7 +295,26 @@ async def test_agent_response_error_does_not_leak_medical_notes() -> None:
     with patch.object(
         service,
         "_parse_with_retries",
-        AsyncMock(side_effect=ParseError("Schema validation failed: end_date invalid")),
+        AsyncMock(
+            side_effect=AgentResponseError(
+                "Invalid agent response after 3 attempts: Schema validation failed: end_date invalid"
+            )
+        ),
+    ), patch.object(
+        service,
+        "_llm_create",
+        AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='{"language":"fr"}',
+                            tool_calls=None,
+                        )
+                    )
+                ]
+            )
+        ),
     ):
         with pytest.raises(AgentResponseError) as exc_info:
             await service.chat("Je pars à Rome", traveler_profile=profile)
