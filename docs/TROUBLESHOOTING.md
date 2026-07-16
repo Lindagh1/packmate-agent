@@ -67,3 +67,25 @@ If absent, install Argo Rollouts operator before applying prod overlay Rollout o
 ```
 
 Inspect failing scenario evaluator messages; fixtures must stay schema-valid.
+
+## Gen AI Playground shows no MCP servers
+
+1. Confirm Routes for `weather-mcp` and `baggage-policy-mcp`.
+2. Confirm admin ConfigMap `gen-ai-aa-mcp-servers` in `redhat-ods-applications` with `https://…/mcp` URLs.
+3. Authorize tools in the Playground UI after registration.
+
+## MCP calls fail from backend (`PACKMATE_TOOL_MODE=mcp`)
+
+1. Check `PACKMATE_WEATHER_MCP_URL` / `PACKMATE_BAGGAGE_MCP_URL` end with `/mcp`.
+2. `curl` in-cluster Service: `http://weather-mcp:8080/health`.
+3. Review NetworkPolicy egress from backend to MCP pods.
+4. Increase `PACKMATE_MCP_TIMEOUT_SECONDS` if cold starts are slow.
+
+## EvalHub optional step skipped
+
+Expected when no EvalHub CRD/instance exists. Deterministic gate must still pass. See `evaluations/README.md`.
+
+## Workbench cannot reach model Service
+
+Workbench must run in a project/network that can reach `my-first-model`. Prefer in-cluster URLs over laptop port-forward.
+

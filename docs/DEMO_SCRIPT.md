@@ -1,53 +1,46 @@
-# Demo script (15–30 minutes)
+# Demo script (20–30 minutes) — OpenShift AI story
 
 ## Narrative
 
-Show Packmate as a production-minded agentic lab: UI → structured agent → quality gate → GitOps → canary.
+Show Packmate as an OpenShift AI–native path: model assets → MCP tools → Playground prototype → FastAPI app → deterministic quality gate → (optional) GitOps/canary.
 
-## Minute 0–5 — App
+## Minute 0–5 — Dashboard and model
 
-1. Open `http://localhost:8080`
-2. Submit a Rome summer trip with cabin baggage
-3. Point to daily weather and grouped packing list
+1. Open OpenShift AI dashboard → AI asset endpoints.  
+   `[Screenshot: AI asset endpoints]`
+2. Show `llama-32-3b-instruct` Ready.
 
-Expected: HTTP 200 packing plan, Clothing/Toiletries sections, baggage disclaimer.
+## Minute 5–12 — MCP and Playground
 
-## Minute 5–10 — Agent internals
+1. Show weather-mcp / baggage-policy-mcp Routes or local MCP health.
+2. Open Gen AI Playground; enable MCP tools.  
+   `[Screenshot: Playground with MCP tools]`
+3. Paste `playground/system-instructions.md`.
+4. Run Rome weather + power-bank checked prompts from `playground/test-prompts.json`.
 
-```bash
-sed -n '1,80p' backend/app/agent/prompts.py
-sed -n '1,60p' backend/app/agent/enrichment.py
-```
+Expected: visible tool calls; baggage disclaimer; no chain-of-thought dump on reveal-reasoning.
 
-Show privacy defaults and deterministic baggage enrichment.
+## Minute 12–18 — Application
 
-## Minute 10–15 — Quality gate
+1. In Workbench or laptop compose: show FastAPI `PACKMATE_TOOL_MODE=mcp` ConfigMap keys.
+2. Submit a trip in the React UI; point to daily weather + grouped packing list.
 
-```bash
-cd backend
-.venv/bin/python -m evals.runner --mode deterministic --threshold 0.90
-.venv/bin/python -m evals.runner --mode deterministic --threshold 0.999
-```
-
-Expected: pass then fail.
-
-## Minute 15–20 — Metrics
+## Minute 18–22 — Quality gate
 
 ```bash
-curl -s localhost:8000/metrics | grep packmate_ | head
-curl -s localhost:8000/ready
+evaluations/scripts/run_deterministic_gate.sh
+# or
+cd backend && .venv/bin/python -m evals.runner --mode deterministic --threshold 0.90
 ```
 
-## Minute 20–25 — Manifests
+Expected: PASS (~0.95). Optionally show EvalHub skip script if no instance.
 
-```bash
-oc kustomize deploy/overlays/dev | head
-./scripts/security-check.sh
-```
+## Minute 22–28 — Delivery story
 
-## Minute 25–30 — Canary story
+1. Show `.tekton/push.yaml` builds four images.
+2. Show `gitops/application-prod.yaml` and prod Rollout (honest if Operators absent).  
+   `[Screenshot: Argo CD application]` / `[Screenshot: Argo Rollout]` when available.
 
-Even if Rollouts operator is absent, walk through `docs/CANARY_DEMO.md` and show Rollout YAML:
+## Closing line
 
-- 10% → analyze → pause → 50% → analyze → pause → 100%
-- abort/rollback commands in `scripts/canary-demo.sh`
+Prototype in Playground with real MCP servers, industrialize with the same tools in FastAPI, gate with deterministic evals, promote with GitOps/canary when Operators exist.

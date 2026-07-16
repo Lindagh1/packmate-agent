@@ -1,4 +1,5 @@
-# EXAMPLE ONLY — cluster-admin ConfigMap for OpenShift AI Gen AI Playground.
+# EXAMPLE ONLY — platform ConfigMap for OpenShift AI Gen AI Playground.
+# Creating this object typically requires elevated cluster permissions.
 # Do NOT apply during automated Packmate validation.
 # Replace ROUTE_HOST placeholders with real Route hosts after MCP deploy.
 #

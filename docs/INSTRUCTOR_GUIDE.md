@@ -1,60 +1,95 @@
 # Instructor guide
 
-## Prerequisites
+## Detected platform (read-only audit 2026-07-16)
 
-- OpenShift cluster with developer access
-- OpenShift AI model `llama-32-3b-instruct` in `my-first-model`
-- Podman 5.x
-- Node.js 22+ (or project nodeenv)
-- Python 3.12+
-- `oc` CLI
+| Item | Value |
+|------|-------|
+| OpenShift AI | **Self-Managed 3.4.2** (`rhods-operator.3.4.2`) |
+| DataScienceCluster | `default-dsc` Ready |
+| Workbenches | Managed / Ready |
+| KServe / model | `llama-32-3b-instruct` Ready in `my-first-model` |
+| TrustyAI | Operator Managed (pods Running); **no** TrustyAIService/EvalHub instances |
+| Llama Stack Operator | Managed / Ready; no LlamaStackDistribution instances |
+| Pipelines | OpenShift Pipelines **1.22.4** |
+| OpenShift GitOps / Argo CD | **Absent** |
+| Argo Rollouts | **Absent** |
+| Playground MCP ConfigMap `gen-ai-aa-mcp-servers` | **Absent** at audit |
 
-## Duration
+Details: `docs/implementation/OPENSHIFT_AI_CAPABILITIES.md`.
 
-- Full lab: 4–6 hours
-- Demo only: 20–30 minutes (`docs/DEMO_SCRIPT.md`)
+## Operators / features required for the full story
 
-## RHDP environment notes
+| Capability | Required? | Notes |
+|------------|-----------|-------|
+| OpenShift AI (dashboard, workbenches, KServe) | Yes | Present |
+| Model `llama-32-3b-instruct` | Yes | Present |
+| MCP registration ConfigMap | Yes for Playground tools | Instructor/admin creates example from `deploy/examples/mcp-registration/` |
+| TrustyAI / EvalHub instance | Optional Level 2 | CRDs present; create only if demoing EvalHub |
+| OpenShift Pipelines | Yes for live Tekton | Present |
+| OpenShift GitOps | Optional live sync | Manifests ready; Operator absent |
+| Argo Rollouts | Optional live canary | Manifests ready; Operator absent |
 
-- Prefer in-cluster `BASE_URL` to the predictor Service
-- Avoid committing tokens from the RHDP console
-- Port-forward is for laptop labs only; it can drop (`lost connection to pod`)
+## Resources to prepare before the session
 
-## Pre-session checklist
+1. Confirm model InferenceService Ready.
+2. Create Data Science Project `packmate-lab` (or let Module 2 create it).
+3. Prefetch Workbench image (code-server / VS Code + Python).
+4. (Admin) Deploy MCP Routes or apply Packmate overlay when ready for live demo — **not** required for local validation.
+5. (Admin) Create `gen-ai-aa-mcp-servers` with real Route URLs ending in `/mcp`.
+6. Optional: create EvalHub + TrustyAIService from `evaluations/*/`.
+7. Do **not** commit tokens; create `packmate-llm` Secret only in-cluster when applying (instructor).
 
-1. Confirm model pod Ready
-2. Confirm `oc whoami` works
-3. Prefetch UBI images if bandwidth is limited
-4. Create `packmate-dev` project + `packmate-llm` secret (instructor only)
-5. Verify Pipelines operator and Argo CD availability
+## Model and MCP
 
-## Validation commands
+- Model: `llama-32-3b-instruct` — AI asset endpoints + in-cluster `/v1`
+- MCP: `weather-mcp`, `baggage-policy-mcp` — Streamable HTTP `/mcp`
+- Traveler profile: **not** an MCP
+
+## Playground configuration
+
+- System instructions: `playground/system-instructions.md`
+- Prompts: `playground/test-prompts.json`
+- Expected tools: `playground/expected-tool-calls.json`
+
+## EvalHub / TrustyAI
+
+- Preparatory YAML under `evaluations/`
+- `evaluations/scripts/run_evalhub_optional.sh` exits 0 when absent
+- Deterministic gate remains mandatory (`backend/evals` / `evaluations/scripts/run_deterministic_gate.sh`)
+
+## Workbench preparation
+
+- Prefer UI creation; example CR: `deploy/workbench/notebook-code-server.example.yaml` (not applied by CI)
+- Clone: `https://github.com/Lindagh1/packmate-agent.git` → `git switch packmate-v2`
+
+## Pre-session validation
 
 ```bash
+oc get datasciencecluster
+oc get inferenceservice -n my-first-model
+oc get csv -A | grep rhods-operator
 backend/.venv/bin/pytest -q
-backend/.venv/bin/python -m evals.runner --mode deterministic --threshold 0.90
-cd frontend && npm run lint && npm run test && npm run build
+cd mcp-servers/weather && pytest -q
+cd mcp-servers/baggage-policy && pytest -q
+evaluations/scripts/run_deterministic_gate.sh
 ./scripts/validate-manifests.sh
 ./scripts/security-check.sh
 ```
 
-## Demo points
-
-1. UI packing plan + daily weather
-2. Quality gate fail with impossible threshold
-3. Metrics scrape `/metrics`
-4. Kustomize overlay difference dev vs prod
-5. Canary promote/abort narrative
-
-## Exercise solutions
-
-- Category alias: extend `_CATEGORY_CANONICAL` in `enrichment.py`
-- Eval scenario: add fixture + scenario JSON, ensure score stays ≥ 0.90
-
 ## Reset procedure
 
-```bash
-podman compose down
-# do not delete shared model namespace
-oc delete project packmate-dev   # only if disposable lab project
-```
+1. Delete participant Workbench PVCs if disk full (UI).
+2. Reset Playground chat / reload exported instructions.
+3. Do not delete shared model namespace.
+4. Optional: delete lab namespace Deployments only if instructor owns that namespace.
+
+## Solutions / optional by version
+
+- If Playground MCP UI differs slightly on 3.4.x patches, follow Red Hat “Configuring MCP servers” docs for ConfigMap shape.
+- If GitOps/Rollouts Operators appear later, existing `gitops/` and prod Rollout manifests apply without redesign.
+- MLflow DSC component was **Removed** — do not depend on MLflow unless activated.
+
+## Duration
+
+- Full lab: 4–6 hours (`docs/PARTICIPANT_GUIDE.md` Modules 1–10)
+- Demo only: 20–30 minutes (`docs/DEMO_SCRIPT.md`)

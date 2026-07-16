@@ -97,8 +97,14 @@ if frontend["spec"]["replicas"] != (2 if overlay == "prod" else 1):
     raise SystemExit(f"{path}: unexpected frontend replica count")
 
 routes = [d for d in docs if d.get("kind") == "Route"]
-if len(routes) != 1 or routes[0]["metadata"]["name"] != "packmate-frontend":
-    raise SystemExit(f"{path}: expected a single public Route named packmate-frontend")
+route_names = {d["metadata"]["name"] for d in routes}
+if "packmate-frontend" not in route_names:
+    raise SystemExit(f"{path}: expected public Route named packmate-frontend")
+# MCP Routes are intentional for Gen AI Playground registration (HTTPS URLs).
+allowed_extra = {"weather-mcp", "baggage-policy-mcp"}
+unexpected = route_names - {"packmate-frontend"} - allowed_extra
+if unexpected:
+    raise SystemExit(f"{path}: unexpected Route names: {sorted(unexpected)}")
 
 print(f"  {len(docs)} documents OK")
 PY
