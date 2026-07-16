@@ -1,0 +1,274 @@
+---
+# Packmate v2 — pull-request pipeline (no image push).
+# Triggered by Pipelines as Code on pull_request events.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: packmate-pull-request
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: ci
+spec:
+  params:
+    - name: git-url
+      type: string
+      description: Repository clone URL
+    - name: git-revision
+      type: string
+      description: Git revision to build (branch, tag, or SHA)
+    - name: output-image-backend
+      type: string
+      description: Target backend image reference (unused on PR; reserved for parity with push pipeline)
+      default: quay.io/example/packmate-backend:ci
+    - name: output-image-frontend
+      type: string
+      description: Target frontend image reference (unused on PR; reserved for parity with push pipeline)
+      default: quay.io/example/packmate-frontend:ci
+    - name: gitops-branch
+      type: string
+      description: GitOps branch (unused on PR)
+      default: main
+    - name: gitops-overlay
+      type: string
+      description: Kustomize overlay name (unused on PR)
+      default: dev
+    - name: evaluation-threshold
+      type: string
+      description: Minimum deterministic evaluation score (0.0–1.0)
+      default: "0.90"
+  workspaces:
+    - name: source
+      description: Cloned application source
+    - name: shared-data
+      description: Shared scratch space between tasks
+    - name: dockerconfig
+      description: Registry credentials (registry-auth secret)
+    - name: git-auth
+      description: Git credentials for GitOps repo (gitops-repo-auth secret)
+  tasks:
+    - name: clone
+      taskSpec:
+        description: Clone the application repository
+        params:
+          - name: url
+            type: string
+          - name: revision
+            type: string
+        workspaces:
+          - name: output
+        steps:
+          - name: clone
+            image: registry.redhat.io/ubi9/git:latest
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              git clone --depth 1 --branch "$(params.revision)" "$(params.url)" /workspace/output/source 2>/dev/null \
+                || git clone --depth 1 "$(params.url)" /workspace/output/source
+              cd /workspace/output/source
+              git fetch --depth 1 origin "$(params.revision)" || true
+              git checkout "$(params.revision)"
+              echo "Checked out $(git rev-parse --short HEAD) from $(params.url)"
+        workspaces:
+          - name: output
+            workspace: source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+
+    - name: backend-tests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: pytest
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/backend
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              pytest -v
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: quality-gate
+      runAfter:
+        - backend-tests
+      taskSpec:
+        params:
+          - name: threshold
+            type: string
+        workspaces:
+          - name: source
+        steps:
+          - name: deterministic-evals
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/backend
+            env:
+              - name: THRESHOLD
+                value: $(params.threshold)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              python -m evals.runner --mode deterministic --threshold "${THRESHOLD}"
+        workspaces:
+          - name: source
+            workspace: source
+      params:
+        - name: threshold
+          value: $(params.evaluation-threshold)
+
+    - name: frontend-ci
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: lint-test-build
+            image: registry.redhat.io/ubi9/nodejs-22:latest
+            workingDir: $(workspaces.source.path)/source/frontend
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              npm ci
+              npm run lint
+              npm run test
+              npm run build
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: validate-containerfiles
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: buildah-validate
+            image: quay.io/buildah/stable:latest
+            workingDir: $(workspaces.source.path)/source
+            securityContext:
+              privileged: true
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              storage="${HOME}/containers"
+              mkdir -p "${storage}"
+              export STORAGE_DRIVER=vfs
+              export BUILDAH_ISOLATION=chroot
+              echo "Validating backend/Containerfile ..."
+              buildah bud --layers -f backend/Containerfile -t localhost/packmate-backend:ci-validate backend/
+              echo "Validating frontend/Containerfile ..."
+              buildah bud --layers -f frontend/Containerfile -t localhost/packmate-frontend:ci-validate frontend/
+              echo "Containerfiles build successfully (not pushed)."
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: validate-manifests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: render-and-validate
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              pip install --quiet pyyaml
+              if command -v oc >/dev/null 2>&1; then
+                export PATH="/usr/bin:${PATH}"
+              elif command -v kustomize >/dev/null 2>&1; then
+                export PATH="$(dirname "$(command -v kustomize)"):${PATH}"
+              fi
+              ./scripts/render-manifests.sh
+              ./scripts/validate-manifests.sh
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: security-check
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: policy-check
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              # Fails on :latest image tags and plaintext secrets in tracked files.
+              # Script may not exist yet in early branches; pipeline expects it on main.
+              ./scripts/security-check.sh
+        workspaces:
+          - name: source
+            workspace: source
+
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: packmate-pr-
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: ci
+    tekton.dev/pipeline: packmate-pull-request
+  annotations:
+    pipelinesascode.tekton.dev/on-event: "[pull_request]"
+    pipelinesascode.tekton.dev/on-target-branch: "[main]"
+    pipelinesascode.tekton.dev/max-keep-runs: "5"
+spec:
+  pipelineRef:
+    name: packmate-pull-request
+  params:
+    - name: git-url
+      value: https://github.com/example/packmate-agent.git
+    - name: git-revision
+      value: "{{ revision }}"
+    - name: output-image-backend
+      value: quay.io/example/packmate-backend:ci
+    - name: output-image-frontend
+      value: quay.io/example/packmate-frontend:ci
+    - name: gitops-branch
+      value: main
+    - name: gitops-overlay
+      value: dev
+    - name: evaluation-threshold
+      value: "0.90"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+    - name: shared-data
+      emptyDir: {}
+    - name: dockerconfig
+      secret:
+        secretName: registry-auth
+        optional: true
+    - name: git-auth
+      secret:
+        secretName: gitops-repo-auth
+        optional: true
