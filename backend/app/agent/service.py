@@ -12,6 +12,15 @@ from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.models.chat import PackingResponse
 from app.models.profile import TravelerProfile
+from app.observability import (
+    BAGGAGE_WARNINGS,
+    INVALID_RESPONSES,
+    LLM_DURATION,
+    LLM_ERRORS,
+    LLM_REQUESTS,
+    Timer,
+    span,
+)
 
 
 class AgentService:
@@ -53,13 +62,17 @@ class AgentService:
         response: PackingResponse,
         context: ToolContext,
     ) -> PackingResponse:
-        return enrich_packing_response(
-            response=response,
-            profile=context.traveler_profile,
-            collected_baggage_warnings=context.collected_baggage_warnings,
-            rules_disclaimer=context.rules_disclaimer,
-            weather_response=context.weather_response,
-        )
+        with span("enrichment.deterministic", {"language": response.language}):
+            enriched = enrich_packing_response(
+                response=response,
+                profile=context.traveler_profile,
+                collected_baggage_warnings=context.collected_baggage_warnings,
+                rules_disclaimer=context.rules_disclaimer,
+                weather_response=context.weather_response,
+            )
+        if enriched.baggage_warnings:
+            BAGGAGE_WARNINGS.inc(len(enriched.baggage_warnings))
+        return enriched
 
     async def _parse_with_retries(
         self,
@@ -72,9 +85,11 @@ class AgentService:
 
         for attempt in range(self.MAX_PARSE_ATTEMPTS):
             try:
-                parsed = parse_packing_response(current_content)
+                with span("parser.packing_response", {"attempt": attempt + 1}):
+                    parsed = parse_packing_response(current_content)
                 return self._enrich_response(parsed, context)
             except ParseError as exc:
+                INVALID_RESPONSES.inc()
                 if attempt >= self.MAX_PARSE_ATTEMPTS - 1:
                     raise AgentResponseError(
                         f"Invalid agent response after {self.MAX_PARSE_ATTEMPTS} attempts: {exc}"
@@ -98,13 +113,28 @@ class AgentService:
                     }
                 )
 
-                correction = client.chat.completions.create(
-                    model=self.settings.model,
-                    messages=messages,
-                )
+                correction = self._llm_create(client, messages)
                 current_content = correction.choices[0].message.content or ""
 
         raise AgentResponseError("Unable to parse agent response.")
+
+    def _llm_create(self, client: OpenAI, messages: list[dict[str, Any]], **kwargs: Any):
+        timer = Timer()
+        try:
+            with span("llm.chat.completions", {"status": "started"}):
+                response = client.chat.completions.create(
+                    model=self.settings.model,
+                    messages=messages,
+                    **kwargs,
+                )
+            LLM_REQUESTS.labels(status="ok").inc()
+            LLM_DURATION.observe(timer.seconds())
+            return response
+        except Exception as exc:
+            LLM_REQUESTS.labels(status="error").inc()
+            LLM_ERRORS.labels(error_type=type(exc).__name__).inc()
+            LLM_DURATION.observe(timer.seconds())
+            raise
 
     async def chat(
         self,
@@ -121,9 +151,9 @@ class AgentService:
         ]
 
         for _ in range(self.MAX_TOOL_ROUNDS):
-            response = client.chat.completions.create(
-                model=self.settings.model,
-                messages=messages,
+            response = self._llm_create(
+                client,
+                messages,
                 tools=TOOL_DEFINITIONS,
                 tool_choice="auto",
             )

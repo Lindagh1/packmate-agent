@@ -18,4 +18,16 @@ Branch: `packmate-v2`
   - `python -m evals.runner --mode deterministic --threshold 0.999` (expected fail)
 - **Result:** quality gate score **0.9559** (pass at 0.90); impossible threshold fails as expected
 - **Limits:** live mode not executed automatically; fixture-driven only in CI
-- **Next:** Phase 6 OpenTelemetry and metrics
+## Phase 6 — Observability and OpenTelemetry
+
+- **Status:** completed
+- **Files created/updated:**
+  - `backend/app/observability.py`
+  - `backend/app/main.py` (`/metrics`, `/ready`, metrics middleware)
+  - instrumentation in agent service/tools
+  - `backend/tests/test_observability.py`
+  - runtime OTel/Prometheus dependencies
+- **Tests executed:** full backend pytest; quality gate 0.90; container smoke `/ready` + `/metrics`
+- **Result:** backend works without OTel collector; metrics always on
+- **Limits:** traces exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` or console exporter configured
+- **Next:** Phase 7 OpenShift manifests (already drafted under `deploy/`)

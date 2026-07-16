@@ -1,18 +1,60 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.agent.exceptions import AgentResponseError, LLMConfigurationError
 from app.agent.service import AgentService
 from app.models.chat import ChatRequest, PackingResponse
 from app.models.weather import WeatherResponse
+from app.observability import (
+    HTTP_DURATION,
+    HTTP_REQUESTS,
+    PACKMATE_VERSION,
+    Timer,
+    metrics_payload,
+    setup_telemetry,
+)
 from app.tools.weather import CityNotFoundError, WeatherToolError, get_weather
 
-app = FastAPI(title="Packmate API", version="0.2.0")
+app = FastAPI(title="Packmate API", version=PACKMATE_VERSION)
 agent_service = AgentService()
+setup_telemetry(app)
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+        timer = Timer()
+        response = await call_next(request)
+        endpoint = request.url.path
+        if endpoint not in {"/metrics"}:
+            HTTP_REQUESTS.labels(
+                method=request.method,
+                endpoint=endpoint,
+                status=str(response.status_code),
+            ).inc()
+            HTTP_DURATION.labels(method=request.method, endpoint=endpoint).observe(
+                timer.seconds()
+            )
+        return response
+
+
+app.add_middleware(MetricsMiddleware)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    """Readiness: app can accept requests (does not require external LLM)."""
+    return {"status": "ready", "version": PACKMATE_VERSION}
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    payload, content_type = metrics_payload()
+    return Response(content=payload, media_type=content_type)
 
 
 @app.get("/api/v1/weather", response_model=WeatherResponse)

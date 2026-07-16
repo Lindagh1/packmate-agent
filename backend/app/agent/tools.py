@@ -3,6 +3,7 @@ import logging
 
 from app.agent.context import ToolContext
 from app.models.profile import TravelerProfile
+from app.observability import TOOL_CALLS, TOOL_DURATION, Timer, span
 from app.tools.baggage import lookup_baggage_rules
 from app.tools.traveler_profile import lookup_traveler_profile
 from app.tools.weather import CityNotFoundError, WeatherToolError, get_weather
@@ -88,28 +89,38 @@ def _safe_tool_log(name: str, args: dict, context: ToolContext) -> None:
 async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
     args = json.loads(arguments or "{}")
     _safe_tool_log(name, args, context)
+    timer = Timer()
+    status = "ok"
 
-    if name == "get_weather":
-        try:
-            result = await get_weather(args["city"], args.get("days", 14))
-            context.record_weather_result(result)
-            return json.dumps(result.model_dump())
-        except CityNotFoundError as exc:
-            return json.dumps({"error": str(exc)})
-        except WeatherToolError as exc:
-            return json.dumps({"error": str(exc)})
+    try:
+        with span(f"tool.{name}", {"tool_name": name}):
+            if name == "get_weather":
+                try:
+                    result = await get_weather(args["city"], args.get("days", 14))
+                    context.record_weather_result(result)
+                    return json.dumps(result.model_dump())
+                except CityNotFoundError as exc:
+                    status = "not_found"
+                    return json.dumps({"error": str(exc)})
+                except WeatherToolError as exc:
+                    status = "error"
+                    return json.dumps({"error": str(exc)})
 
-    if name == "baggage_rules":
-        result = lookup_baggage_rules(
-            baggage_type=args["baggage_type"],
-            item=args.get("item"),
-            category=args.get("category"),
-            include_general_rules=args.get("include_general_rules", False),
-        )
-        context.record_baggage_result(result.warnings, result.disclaimer)
-        return json.dumps(result.model_dump())
+            if name == "baggage_rules":
+                result = lookup_baggage_rules(
+                    baggage_type=args["baggage_type"],
+                    item=args.get("item"),
+                    category=args.get("category"),
+                    include_general_rules=args.get("include_general_rules", False),
+                )
+                context.record_baggage_result(result.warnings, result.disclaimer)
+                return json.dumps(result.model_dump())
 
-    if name == "traveler_profile":
-        return json.dumps(lookup_traveler_profile(context.traveler_profile))
+            if name == "traveler_profile":
+                return json.dumps(lookup_traveler_profile(context.traveler_profile))
 
-    return json.dumps({"error": f"Unknown tool: {name}"})
+            status = "unknown"
+            return json.dumps({"error": f"Unknown tool: {name}"})
+    finally:
+        TOOL_CALLS.labels(tool=name, status=status).inc()
+        TOOL_DURATION.labels(tool=name).observe(timer.seconds())
