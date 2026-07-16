@@ -8,6 +8,8 @@ metadata:
   annotations:
     # Chat + tool rounds against small models often exceed the default 30s.
     haproxy.router.openshift.io/timeout: 180s
+    # Note: on AWS Classic ELB sandboxes the LB idle timeout (~60s) can still
+    # cut long chats before HAProxy's 180s. Packmate keeps chat under that budget.
 spec:
   to:
     kind: Service

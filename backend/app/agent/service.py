@@ -25,10 +25,12 @@ from app.observability import (
 
 
 class AgentService:
-    # Small instruct models may re-call tools after valid results; keep headroom
-    # and force a final JSON answer when the tool budget is exhausted.
-    MAX_TOOL_ROUNDS = 8
+    # Keep the tool loop short: OpenShift routes on AWS Classic LB often idle-out
+    # near ~60s even when haproxy.router.openshift.io/timeout is higher.
+    MAX_TOOL_ROUNDS = 6
     MAX_PARSE_ATTEMPTS = 3
+    MAX_COMPLETION_TOKENS = 1536
+    ESSENTIAL_TOOLS = frozenset({"get_weather", "baggage_rules"})
 
     def __init__(
         self,
@@ -42,6 +44,29 @@ class AgentService:
         if self._client is not None:
             return self._client
         return self.settings.create_client()
+
+    @staticmethod
+    def _tools_for_request(
+        traveler_profile: TravelerProfile | None,
+    ) -> list[dict[str, Any]]:
+        if traveler_profile is not None:
+            return TOOL_DEFINITIONS
+        return [
+            tool
+            for tool in TOOL_DEFINITIONS
+            if tool["function"]["name"] != "traveler_profile"
+        ]
+
+    @staticmethod
+    def _tool_cache_key(name: str, arguments: str | None) -> tuple[str, str]:
+        raw = arguments or "{}"
+        try:
+            normalized = json.dumps(
+                json.loads(raw), sort_keys=True, separators=(",", ":")
+            )
+        except json.JSONDecodeError:
+            normalized = raw
+        return (name, normalized)
 
     @staticmethod
     def _assistant_message_to_dict(message: Any) -> dict[str, Any]:
@@ -116,7 +141,11 @@ class AgentService:
                     }
                 )
 
-                correction = await self._llm_create(client, messages)
+                correction = await self._llm_create(
+                    client,
+                    messages,
+                    max_tokens=self.MAX_COMPLETION_TOKENS,
+                )
                 current_content = correction.choices[0].message.content or ""
 
         raise AgentResponseError("Unable to parse agent response.")
@@ -127,6 +156,7 @@ class AgentService:
         # Run the sync OpenAI client off the event loop so /health and /ready
         # stay responsive during long model/tool rounds.
         timer = Timer()
+        kwargs.setdefault("max_tokens", self.MAX_COMPLETION_TOKENS)
         try:
             with span("llm.chat.completions", {"status": "started"}):
                 response = await asyncio.to_thread(
@@ -152,6 +182,10 @@ class AgentService:
         self.settings.require_configured()
         client = self._get_client()
         context = ToolContext(traveler_profile=traveler_profile)
+        tools = self._tools_for_request(traveler_profile)
+        tool_cache: dict[tuple[str, str], str] = {}
+        completed_tools: set[str] = set()
+        forced_final_nudge = False
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": build_system_prompt()},
@@ -159,22 +193,47 @@ class AgentService:
         ]
 
         for _ in range(self.MAX_TOOL_ROUNDS):
-            response = await self._llm_create(
-                client,
-                messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-            )
+            essentials_ready = self.ESSENTIAL_TOOLS.issubset(completed_tools)
+            if essentials_ready:
+                if not forced_final_nudge:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You already have weather and baggage tool results. "
+                                "Return ONLY valid JSON matching the required schema now. "
+                                "Do not call tools."
+                            ),
+                        }
+                    )
+                    forced_final_nudge = True
+                response = await self._llm_create(client, messages)
+            else:
+                response = await self._llm_create(
+                    client,
+                    messages,
+                    tools=tools,
+                    tool_choice="auto",
+                )
             assistant_message = response.choices[0].message
 
-            if assistant_message.tool_calls:
+            if assistant_message.tool_calls and not essentials_ready:
                 messages.append(self._assistant_message_to_dict(assistant_message))
                 for tool_call in assistant_message.tool_calls:
-                    tool_result = await execute_tool(
+                    cache_key = self._tool_cache_key(
                         tool_call.function.name,
                         tool_call.function.arguments,
-                        context,
                     )
+                    if cache_key in tool_cache:
+                        tool_result = tool_cache[cache_key]
+                    else:
+                        tool_result = await execute_tool(
+                            tool_call.function.name,
+                            tool_call.function.arguments,
+                            context,
+                        )
+                        tool_cache[cache_key] = tool_result
+                    completed_tools.add(tool_call.function.name)
                     messages.append(
                         {
                             "role": "tool",

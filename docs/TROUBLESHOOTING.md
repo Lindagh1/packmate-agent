@@ -89,3 +89,36 @@ Expected when no EvalHub CRD/instance exists. Deterministic gate must still pass
 
 Workbench must run in a project/network that can reach `my-first-model`. Prefer in-cluster URLs over laptop port-forward.
 
+## Public Route chat times out around 60 seconds
+
+Symptoms:
+
+- `POST https://<frontend-route>/api/v1/chat` fails near **~60s** (504 / TLS EOF)
+- Same request succeeds from inside the cluster (frontend pod → backend) in 30–90s
+- Route already has `haproxy.router.openshift.io/timeout: 180s`
+- Nginx `proxy_*_timeout` is already 180s
+
+Root cause on RHDP / AWS Classic Load Balancer sandboxes:
+
+1. The OpenShift router is behind an **AWS Classic ELB** whose default **idle timeout is ~60s**.
+2. That idle timeout applies to the whole connection while waiting for the full response body.
+3. Raising only the Route HAProxy annotation **does not** change the AWS ELB idle timeout (cluster-wide IngressController / LB setting — out of participant scope).
+
+What Packmate does instead (compatible with the participant guide):
+
+- Keep Route annotation `haproxy.router.openshift.io/timeout: 180s` and Nginx proxy timeouts at 180s.
+- Shorten the agent loop: cache identical tool calls, omit `traveler_profile` when no profile is sent, force the final JSON once weather + baggage results exist, cap `max_tokens`.
+- Target wall-clock chat completion **under ~55s** so the public Route stays within the AWS idle budget.
+
+Verify:
+
+```bash
+# Should stay well under 60s after the backend fix
+curl -sS -o /tmp/out.json -w 'http=%{http_code} total=%{time_total}s\n' --max-time 90 \
+  -X POST "https://$(oc -n packmate-lab get route packmate-frontend -o jsonpath='{.spec.host}')/api/v1/chat" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Je pars a Rome pendant quatre jours avec un bagage cabine."}'
+```
+
+If chat still exceeds ~60s under heavy model load, use the in-cluster proxy path for demos or ask a cluster admin to raise the AWS ELB idle timeout (not a Packmate namespace change).
+

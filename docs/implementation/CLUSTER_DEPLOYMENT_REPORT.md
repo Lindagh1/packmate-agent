@@ -31,7 +31,7 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Image | Tag | Digest |
 |-------|-----|--------|
-| packmate-backend | v2-dev | `sha256:ec1218cbe4457400b6fb4c0734430d6cc36a77e9065b49ada483c44cb59b05dc` |
+| packmate-backend | v2-dev | `sha256:d1d4739b51cce9a7f94249b9f574fe693bbb92940538df4c97c9e0cb8df2941f` |
 | packmate-frontend | v2-dev | `sha256:a6517ab1a06aaf5273755da816c0d4f72482bbc53fc10a20185eda88b567a1be` |
 | packmate-weather-mcp | v2-dev | `sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc` |
 | packmate-baggage-policy-mcp | v2-dev | `sha256:005d4ccdcc2c06afdc545e4e6ff0d5b3fc02fd4f349e1287253efe7e44036458` |
@@ -106,26 +106,39 @@ Scénario fictif (sans notes médicales) : Rome, 4 jours, bagage cabine, marche.
 | Backend `/health` `/ready` `/metrics` | 200 |
 | Frontend Route GET `/` | 200 |
 | Proxy frontend → `/api/v1/chat` (depuis le pod frontend, sans port-forward) | **OK** |
-| Réponse | `destination=Rome`, 9 packing items, weather présent, **2 baggage_warnings**, `rules_disclaimer` présent |
-| Route externe POST chat long | Instable : timeout / EOF côté edge (~60s) malgré annotation Route `180s` — latence modèle + tours d’outils |
+| Route publique `POST /api/v1/chat` (après fix agent) | **OK** — 3/3 HTTP 200 (≈25s / 50s / 59s) |
+| Réponse | `destination=Rome`, météo présente, baggage warnings + disclaimer |
 
 Logs backend contrôlés : pas de Bearer token, pas de phrase utilisateur complète dans les logs échantillonnés.
+
+## Diagnostic timeout Route (~60s)
+
+| Couche | Timeout / comportement | Verdict |
+|--------|------------------------|---------|
+| curl client | `--max-time` 90–240 | Pas la coupure |
+| Route annotation | `haproxy.router.openshift.io/timeout: 180s` (présente) | Correcte mais insuffisante seule |
+| Nginx | `proxy_*_timeout` 180s | Pas la coupure |
+| Backend / MCP | weather ~1s, baggage ~0.05s | OK |
+| Modèle | tours LLM + JSON final souvent 25–90s | Charge latence |
+| **AWS Classic ELB** devant `router-default` | idle ~**60s** (défaut) | **Couche responsable** |
+
+Correction appliquée (namespace only) : raccourcir la boucle agent (cache outils, pas de `traveler_profile` sans profil, forcer le JSON dès que weather+baggage sont connus, `max_tokens=1536`) pour finir sous le budget idle AWS. Pas de changement IngressController / Operator.
 
 ## Erreurs rencontrées et corrections
 
 1. **DNS / egress OVN** sous NetworkPolicy stricte → egress allow-all pour weather, frontend, backend (ingress toujours restreint).
 2. **Kustomize `includeSelectors: true`** polluait les selecteurs NetworkPolicy → `includeSelectors: false`.
 3. **BASE_URL modèle sans `:8080`** → Connection refused ; Secret corrigé vers `:8080/v1`.
-4. **Boucle d’outils** du petit modèle → `MAX_TOOL_ROUNDS=8` + forçage JSON final ; prompt anti re-appel.
+4. **Boucle d’outils** du petit modèle → forçage JSON + anti re-appel ; puis optimisation sous budget 60s.
 5. **Probes tuées pendant chat** (client OpenAI sync bloquait l’event loop) → `asyncio.to_thread` pour les appels LLM.
-6. **Timeout Route / edge** sur chat long → annotation `haproxy.router.openshift.io/timeout=180s` + nginx proxy 180s ; validation E2E principale via proxy in-pod.
+6. **Timeout Route publique ~60s** → cause = idle AWS Classic ELB ; agent accéléré (voir section diagnostic). Annotation Route 180s conservée.
 
 ## Fonctionnalités encore manuelles
 
 - Création Workbench `packmate-code-server` (UI)
 - Session Gen AI Playground (sélection modèle, auth MCP, prompts, export)
 - Vérification visuelle AI asset endpoints / Playground après ConfigMap
-- Chat long via Route publique si le edge impose un plafond < latence LLM
+- Si le modèle est très lent (>60s), un admin cluster doit monter l’idle timeout AWS ELB (hors scope participant)
 
 ## Commandes de vérification
 
