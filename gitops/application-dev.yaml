@@ -1,0 +1,29 @@
+---
+# Packmate dev — automated sync from deploy/overlays/dev
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: packmate-dev
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/environment: dev
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: packmate
+  source:
+    repoURL: https://github.com/example/packmate-agent.git
+    targetRevision: main
+    path: deploy/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: packmate-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
+  revisionHistoryLimit: 5

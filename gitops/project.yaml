@@ -1,0 +1,46 @@
+---
+# Packmate v2 — Argo CD AppProject
+# Restricts deployments to packmate-dev and packmate-prod only.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: packmate
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+spec:
+  description: Packmate v2 — dev and prod namespaces only
+  sourceRepos:
+    # Replace with your fork or org repo before applying.
+    - https://github.com/example/packmate-agent.git
+  destinations:
+    - namespace: packmate-dev
+      server: https://kubernetes.default.svc
+    - namespace: packmate-prod
+      server: https://kubernetes.default.svc
+  # Namespaced resources only — no cluster-scoped objects.
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: route.openshift.io
+      kind: Route
+  orphanedResources:
+    warn: true
+  roles:
+    - name: developer-read
+      description: Read-only access to Packmate applications
+      policies:
+        - p, proj:packmate:developer-read, applications, get, packmate/*, allow
+      groups:
+        - packmate-developers

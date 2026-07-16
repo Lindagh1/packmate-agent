@@ -1,0 +1,26 @@
+---
+# Packmate prod — manual sync preferred (no automated sync)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: packmate-prod
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: packmate
+  source:
+    repoURL: https://github.com/example/packmate-agent.git
+    targetRevision: main
+    path: deploy/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: packmate-prod
+  # Manual sync: omit automated block. Operators sync after review.
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+  revisionHistoryLimit: 10
