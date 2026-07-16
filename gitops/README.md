@@ -49,6 +49,8 @@ oc apply -f gitops/application-prod.yaml
 | `packmate-dev` | `deploy/overlays/dev` | **Automated** — prune + selfHeal |
 | `packmate-prod` | `deploy/overlays/prod` | **Manual** — operator sync after review |
 
+Applications sync the full overlay, including **`deploy/base/mcp-weather`** and **`deploy/base/mcp-baggage`** (MCP Deployments, Services, and Routes) alongside backend and frontend.
+
 Dev receives digest updates from the Tekton push pipeline (`gitops-overlay=dev`). Prod updates require a deliberate promotion run and manual Argo CD sync.
 
 ## Security

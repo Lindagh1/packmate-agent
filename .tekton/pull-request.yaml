@@ -24,6 +24,14 @@ spec:
       type: string
       description: Target frontend image reference (unused on PR; reserved for parity with push pipeline)
       default: quay.io/example/packmate-frontend:ci
+    - name: output-image-weather-mcp
+      type: string
+      description: Target weather MCP image reference (unused on PR; reserved for parity with push pipeline)
+      default: quay.io/example/packmate-weather-mcp:ci
+    - name: output-image-baggage-policy-mcp
+      type: string
+      description: Target baggage-policy MCP image reference (unused on PR; reserved for parity with push pipeline)
+      default: quay.io/example/packmate-baggage-policy-mcp:ci
     - name: gitops-branch
       type: string
       description: GitOps branch (unused on PR)
@@ -77,6 +85,48 @@ spec:
         - name: revision
           value: $(params.git-revision)
 
+    - name: mcp-weather-tests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: pytest
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/mcp-servers/weather
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              pytest -v
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: mcp-baggage-tests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: pytest
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/mcp-servers/baggage-policy
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              pytest -v
+        workspaces:
+          - name: source
+            workspace: source
+
     - name: backend-tests
       runAfter:
         - clone
@@ -128,6 +178,38 @@ spec:
         - name: threshold
           value: $(params.evaluation-threshold)
 
+    - name: evalhub-optional
+      runAfter:
+        - quality-gate
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: evalhub
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [[ -x evaluations/scripts/run_evalhub_optional.sh ]]; then
+                echo "Running optional EvalHub script ..."
+                ./evaluations/scripts/run_evalhub_optional.sh
+                exit 0
+              fi
+              echo "EvalHub optional: evaluations/scripts/run_evalhub_optional.sh not present — skipping."
+              if command -v oc >/dev/null 2>&1; then
+                if ! oc get crd evalhubs.trustyai.opendatahub.io >/dev/null 2>&1; then
+                  echo "EvalHub CRD not found on cluster — skipping (non-fatal)."
+                  exit 0
+                fi
+                echo "EvalHub CRD present but no runner script — skipping (non-fatal)."
+              else
+                echo "oc not available and no runner script — skipping (non-fatal)."
+              fi
+        workspaces:
+          - name: source
+            workspace: source
+
     - name: frontend-ci
       runAfter:
         - clone
@@ -172,6 +254,10 @@ spec:
               buildah bud --layers -f backend/Containerfile -t localhost/packmate-backend:ci-validate backend/
               echo "Validating frontend/Containerfile ..."
               buildah bud --layers -f frontend/Containerfile -t localhost/packmate-frontend:ci-validate frontend/
+              echo "Validating mcp-servers/weather/Containerfile ..."
+              buildah bud --layers -f mcp-servers/weather/Containerfile -t localhost/packmate-weather-mcp:ci-validate mcp-servers/weather/
+              echo "Validating mcp-servers/baggage-policy/Containerfile ..."
+              buildah bud --layers -f mcp-servers/baggage-policy/Containerfile -t localhost/packmate-baggage-policy-mcp:ci-validate mcp-servers/baggage-policy/
               echo "Containerfiles build successfully (not pushed)."
         workspaces:
           - name: source
@@ -247,6 +333,10 @@ spec:
       value: quay.io/example/packmate-backend:ci
     - name: output-image-frontend
       value: quay.io/example/packmate-frontend:ci
+    - name: output-image-weather-mcp
+      value: quay.io/example/packmate-weather-mcp:ci
+    - name: output-image-baggage-policy-mcp
+      value: quay.io/example/packmate-baggage-policy-mcp:ci
     - name: gitops-branch
       value: main
     - name: gitops-overlay

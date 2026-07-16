@@ -32,6 +32,29 @@ check_latest_tags() {
   fi
 }
 
+check_mcp_containerfile_tags() {
+  echo "== MCP Containerfile image tags (:latest) =="
+  local mcp_root="${ROOT}/mcp-servers"
+  local hits=""
+  if [[ -d "${mcp_root}" ]]; then
+    while IFS= read -r -d '' file; do
+      local file_hits
+      file_hits="$(grep -nE ':latest\b' "${file}" 2>/dev/null \
+        | grep -Ev '^[0-9]+:FROM[[:space:]]+(registry\.(access\.)?redhat\.com/ubi|registry\.redhat\.io/ubi)' \
+        || true)"
+      if [[ -n "${file_hits}" ]]; then
+        hits+="${file}:${file_hits}"$'\n'
+      fi
+    done < <(find "${mcp_root}" -name Containerfile -print0 2>/dev/null)
+  fi
+  if [[ -n "${hits}" ]]; then
+    fail "Found disallowed :latest references in mcp-servers Containerfiles (UBI base FROM lines are allowed):"
+    echo "${hits}" >&2
+  else
+    pass "MCP Containerfiles avoid :latest except UBI base images"
+  fi
+}
+
 check_privileged() {
   echo "== Privileged containers =="
   local hits
@@ -200,6 +223,8 @@ main() {
   echo
 
   check_latest_tags
+  echo
+  check_mcp_containerfile_tags
   echo
   check_privileged
   echo

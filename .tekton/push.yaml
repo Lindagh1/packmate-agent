@@ -22,6 +22,12 @@ spec:
     - name: output-image-frontend
       type: string
       description: Fully qualified frontend image (registry/repo/name:tag)
+    - name: output-image-weather-mcp
+      type: string
+      description: Fully qualified weather MCP image (registry/repo/name:tag)
+    - name: output-image-baggage-policy-mcp
+      type: string
+      description: Fully qualified baggage-policy MCP image (registry/repo/name:tag)
     - name: gitops-branch
       type: string
       description: Branch to update in the GitOps repository
@@ -71,6 +77,48 @@ spec:
           value: $(params.git-url)
         - name: revision
           value: $(params.git-revision)
+
+    - name: mcp-weather-tests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: pytest
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/mcp-servers/weather
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              pytest -v
+        workspaces:
+          - name: source
+            workspace: source
+
+    - name: mcp-baggage-tests
+      runAfter:
+        - clone
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: pytest
+            image: registry.redhat.io/ubi9/python-312:latest
+            workingDir: $(workspaces.source.path)/source/mcp-servers/baggage-policy
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 -m venv /tmp/venv
+              source /tmp/venv/bin/activate
+              pip install --quiet -r requirements-dev.txt
+              pytest -v
+        workspaces:
+          - name: source
+            workspace: source
 
     - name: backend-tests
       runAfter:
@@ -163,6 +211,8 @@ spec:
               export BUILDAH_ISOLATION=chroot
               buildah bud --layers -f backend/Containerfile -t localhost/packmate-backend:ci-validate backend/
               buildah bud --layers -f frontend/Containerfile -t localhost/packmate-frontend:ci-validate frontend/
+              buildah bud --layers -f mcp-servers/weather/Containerfile -t localhost/packmate-weather-mcp:ci-validate mcp-servers/weather/
+              buildah bud --layers -f mcp-servers/baggage-policy/Containerfile -t localhost/packmate-baggage-policy-mcp:ci-validate mcp-servers/baggage-policy/
         workspaces:
           - name: source
             workspace: source
@@ -299,10 +349,106 @@ spec:
         - name: image
           value: $(params.output-image-frontend)
 
+    - name: build-push-weather-mcp
+      runAfter:
+        - quality-gate
+        - frontend-ci
+        - validate-containerfiles
+        - validate-manifests
+        - security-check
+      taskSpec:
+        params:
+          - name: image
+            type: string
+        workspaces:
+          - name: source
+          - name: shared-data
+          - name: dockerconfig
+        steps:
+          - name: build-and-push
+            image: quay.io/buildah/stable:latest
+            workingDir: $(workspaces.source.path)/source
+            securityContext:
+              privileged: true
+            env:
+              - name: IMAGE
+                value: $(params.image)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              export STORAGE_DRIVER=vfs
+              export BUILDAH_ISOLATION=chroot
+              if [[ -f "$(workspaces.dockerconfig.path)/.dockerconfigjson" ]]; then
+                mkdir -p "${HOME}/.docker"
+                cp "$(workspaces.dockerconfig.path)/.dockerconfigjson" "${HOME}/.docker/config.json"
+              fi
+              buildah bud --layers -f mcp-servers/weather/Containerfile -t "${IMAGE}" mcp-servers/weather/
+              buildah push --format docker --digestfile "$(workspaces.shared-data.path)/weather-mcp.digest" "${IMAGE}"
+              echo "Weather MCP digest: $(cat "$(workspaces.shared-data.path)/weather-mcp.digest")"
+        workspaces:
+          - name: source
+            workspace: source
+          - name: shared-data
+            workspace: shared-data
+          - name: dockerconfig
+            workspace: dockerconfig
+      params:
+        - name: image
+          value: $(params.output-image-weather-mcp)
+
+    - name: build-push-baggage-policy-mcp
+      runAfter:
+        - quality-gate
+        - frontend-ci
+        - validate-containerfiles
+        - validate-manifests
+        - security-check
+      taskSpec:
+        params:
+          - name: image
+            type: string
+        workspaces:
+          - name: source
+          - name: shared-data
+          - name: dockerconfig
+        steps:
+          - name: build-and-push
+            image: quay.io/buildah/stable:latest
+            workingDir: $(workspaces.source.path)/source
+            securityContext:
+              privileged: true
+            env:
+              - name: IMAGE
+                value: $(params.image)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              export STORAGE_DRIVER=vfs
+              export BUILDAH_ISOLATION=chroot
+              if [[ -f "$(workspaces.dockerconfig.path)/.dockerconfigjson" ]]; then
+                mkdir -p "${HOME}/.docker"
+                cp "$(workspaces.dockerconfig.path)/.dockerconfigjson" "${HOME}/.docker/config.json"
+              fi
+              buildah bud --layers -f mcp-servers/baggage-policy/Containerfile -t "${IMAGE}" mcp-servers/baggage-policy/
+              buildah push --format docker --digestfile "$(workspaces.shared-data.path)/baggage-policy-mcp.digest" "${IMAGE}"
+              echo "Baggage-policy MCP digest: $(cat "$(workspaces.shared-data.path)/baggage-policy-mcp.digest")"
+        workspaces:
+          - name: source
+            workspace: source
+          - name: shared-data
+            workspace: shared-data
+          - name: dockerconfig
+            workspace: dockerconfig
+      params:
+        - name: image
+          value: $(params.output-image-baggage-policy-mcp)
+
     - name: update-gitops
       runAfter:
         - build-push-backend
         - build-push-frontend
+        - build-push-weather-mcp
+        - build-push-baggage-policy-mcp
       taskSpec:
         params:
           - name: git-url
@@ -316,6 +462,10 @@ spec:
           - name: output-image-backend
             type: string
           - name: output-image-frontend
+            type: string
+          - name: output-image-weather-mcp
+            type: string
+          - name: output-image-baggage-policy-mcp
             type: string
         workspaces:
           - name: shared-data
@@ -336,15 +486,24 @@ spec:
                 value: $(params.output-image-backend)
               - name: FRONTEND_IMAGE
                 value: $(params.output-image-frontend)
+              - name: WEATHER_MCP_IMAGE
+                value: $(params.output-image-weather-mcp)
+              - name: BAGGAGE_MCP_IMAGE
+                value: $(params.output-image-baggage-policy-mcp)
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
               BACKEND_DIGEST="$(cat "$(workspaces.shared-data.path)/backend.digest")"
               FRONTEND_DIGEST="$(cat "$(workspaces.shared-data.path)/frontend.digest")"
+              WEATHER_MCP_DIGEST="$(cat "$(workspaces.shared-data.path)/weather-mcp.digest")"
+              BAGGAGE_MCP_DIGEST="$(cat "$(workspaces.shared-data.path)/baggage-policy-mcp.digest")"
               BACKEND_REPO="${BACKEND_IMAGE%%:*}"
               FRONTEND_REPO="${FRONTEND_IMAGE%%:*}"
+              WEATHER_MCP_REPO="${WEATHER_MCP_IMAGE%%:*}"
+              BAGGAGE_MCP_REPO="${BAGGAGE_MCP_IMAGE%%:*}"
 
-              if [[ "${BACKEND_DIGEST}" == *":latest"* || "${FRONTEND_DIGEST}" == *":latest"* ]]; then
+              if [[ "${BACKEND_DIGEST}" == *":latest"* || "${FRONTEND_DIGEST}" == *":latest"* \
+                    || "${WEATHER_MCP_DIGEST}" == *":latest"* || "${BAGGAGE_MCP_DIGEST}" == *":latest"* ]]; then
                 echo "ERROR: refusing to pin :latest digest in GitOps manifests" >&2
                 exit 1
               fi
@@ -378,7 +537,8 @@ spec:
                 exit 1
               fi
 
-              python3 - "${kustom}" "${BACKEND_REPO}" "${BACKEND_DIGEST}" "${FRONTEND_REPO}" "${FRONTEND_DIGEST}" <<'PY'
+              python3 - "${kustom}" "${BACKEND_REPO}" "${BACKEND_DIGEST}" "${FRONTEND_REPO}" "${FRONTEND_DIGEST}" \
+                "${WEATHER_MCP_REPO}" "${WEATHER_MCP_DIGEST}" "${BAGGAGE_MCP_REPO}" "${BAGGAGE_MCP_DIGEST}" <<'PY'
               import sys
               from pathlib import Path
 
@@ -389,12 +549,24 @@ spec:
                   subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
                   import yaml
 
-              path, backend_repo, backend_digest, frontend_repo, frontend_digest = sys.argv[1:6]
+              (
+                  path,
+                  backend_repo,
+                  backend_digest,
+                  frontend_repo,
+                  frontend_digest,
+                  weather_mcp_repo,
+                  weather_mcp_digest,
+                  baggage_mcp_repo,
+                  baggage_mcp_digest,
+              ) = sys.argv[1:10]
               data = yaml.safe_load(Path(path).read_text())
               images = data.setdefault("images", [])
               wanted = {
                   backend_repo: {"newName": backend_repo, "digest": backend_digest},
                   frontend_repo: {"newName": frontend_repo, "digest": frontend_digest},
+                  weather_mcp_repo: {"newName": weather_mcp_repo, "digest": weather_mcp_digest},
+                  baggage_mcp_repo: {"newName": baggage_mcp_repo, "digest": baggage_mcp_digest},
               }
               out = []
               seen = set()
@@ -421,7 +593,9 @@ spec:
               git commit -m "ci(${GITOPS_OVERLAY}): pin images to ${GIT_REVISION}
 
               backend: ${BACKEND_REPO}@${BACKEND_DIGEST}
-              frontend: ${FRONTEND_REPO}@${FRONTEND_DIGEST}"
+              frontend: ${FRONTEND_REPO}@${FRONTEND_DIGEST}
+              weather-mcp: ${WEATHER_MCP_REPO}@${WEATHER_MCP_DIGEST}
+              baggage-policy-mcp: ${BAGGAGE_MCP_REPO}@${BAGGAGE_MCP_DIGEST}"
               git push origin "${GITOPS_BRANCH}"
               echo "GitOps overlay ${GITOPS_OVERLAY} updated on ${GITOPS_BRANCH}."
         workspaces:
@@ -442,6 +616,10 @@ spec:
           value: $(params.output-image-backend)
         - name: output-image-frontend
           value: $(params.output-image-frontend)
+        - name: output-image-weather-mcp
+          value: $(params.output-image-weather-mcp)
+        - name: output-image-baggage-policy-mcp
+          value: $(params.output-image-baggage-policy-mcp)
 
 ---
 apiVersion: tekton.dev/v1
@@ -468,6 +646,10 @@ spec:
       value: quay.io/example/packmate-backend:sha-{{ revision_short }}
     - name: output-image-frontend
       value: quay.io/example/packmate-frontend:sha-{{ revision_short }}
+    - name: output-image-weather-mcp
+      value: quay.io/example/packmate-weather-mcp:sha-{{ revision_short }}
+    - name: output-image-baggage-policy-mcp
+      value: quay.io/example/packmate-baggage-policy-mcp:sha-{{ revision_short }}
     - name: gitops-branch
       value: main
     - name: gitops-overlay

@@ -9,8 +9,13 @@ deploy/
 ├── base/                    # Shared manifests (no namespace)
 │   ├── backend/             # API Deployment, Service, NetworkPolicy, SA
 │   ├── frontend/            # UI Deployment, Service, Route, NetworkPolicy, SA
-│   ├── configmap.yaml       # packmate-config (BASE_URL, MODEL, OTEL defaults)
+│   ├── mcp-weather/         # weather-mcp Deployment, Service, Route, NetworkPolicy, SA
+│   ├── mcp-baggage/         # baggage-policy-mcp Deployment, Service, Route, NetworkPolicy, SA
+│   ├── configmap.yaml       # packmate-config (BASE_URL, MODEL, OTEL, tool mode)
 │   └── kustomization.yaml
+├── workbench/               # DSP + code-server Workbench docs (UI-first; YAML example only)
+├── examples/
+│   └── mcp-registration/    # Gen AI Playground MCP registration example (not applied by default)
 ├── overlays/
 │   ├── dev/                 # namespace packmate-dev, 1 replica each
 │   └── prod/                # namespace packmate-prod, 2 replicas + PDBs
@@ -26,6 +31,8 @@ flowchart LR
   Route --> Frontend[Nginx :8080]
   Frontend -->|"/api/*"| Backend[FastAPI :8080]
   Backend --> Model["llama-32-3b-instruct-predictor<br/>my-first-model NS"]
+  Backend -->|PACKMATE_TOOL_MODE=mcp| WeatherMCP[weather-mcp :8080]
+  Backend -->|PACKMATE_TOOL_MODE=mcp| BaggageMCP[baggage-policy-mcp :8080]
 ```
 
 | Resource | Access |
@@ -33,6 +40,24 @@ flowchart LR
 | `Route/packmate-frontend` | Public (TLS edge) |
 | `Service/packmate-frontend` | ClusterIP |
 | `Service/packmate-backend` | ClusterIP only — no Route |
+| `Route/weather-mcp`, `Route/baggage-policy-mcp` | Public MCP endpoints (Playground registration) |
+| `Service/weather-mcp`, `Service/baggage-policy-mcp` | ClusterIP — backend uses in-namespace URLs |
+
+### MCP tool mode
+
+The backend resolves tools in two modes (see `backend/app/tools/settings.py`):
+
+| Mode | Config | Behavior |
+|------|--------|----------|
+| `local` | `PACKMATE_TOOL_MODE=local` | In-process Python tools (Workbench, unit tests) |
+| `mcp` | `PACKMATE_TOOL_MODE=mcp` | Streamable HTTP calls to `weather-mcp` and `baggage-policy-mcp` |
+
+OpenShift overlays set **`PACKMATE_TOOL_MODE=mcp`** in `packmate-config` with in-cluster URLs:
+
+- `PACKMATE_WEATHER_MCP_URL`: `http://weather-mcp:8080/mcp`
+- `PACKMATE_BAGGAGE_MCP_URL`: `http://baggage-policy-mcp:8080/mcp`
+
+MCP server source and tests: [`mcp-servers/`](../mcp-servers/). Playground registration example: [`examples/mcp-registration/`](examples/mcp-registration/).
 
 ### LLM model (external to this repo)
 
@@ -86,6 +111,13 @@ oc get route packmate-frontend -n packmate-dev
 
 Base manifests use placeholder tags (`PLACEHOLDER`). Overlays replace them via the `images` field — **never use `:latest`**.
 
+| Image | Base reference |
+|-------|----------------|
+| Backend | `quay.io/example/packmate-backend:PLACEHOLDER` |
+| Frontend | `quay.io/example/packmate-frontend:PLACEHOLDER` |
+| weather-mcp | `quay.io/example/packmate-weather-mcp:PLACEHOLDER` |
+| baggage-policy-mcp | `quay.io/example/packmate-baggage-policy-mcp:PLACEHOLDER` |
+
 | Overlay | Tag example |
 |---------|-------------|
 | dev | `sha-dev` |
@@ -112,7 +144,7 @@ Or use content-addressed tags such as `sha-a1b2c3d4` from your pipeline.
 - Pod `securityContext`: `runAsNonRoot`, `seccompProfile: RuntimeDefault`
 - Container: `allowPrivilegeEscalation: false`, drop all capabilities, `readOnlyRootFilesystem: true`
 - Writable `/tmp` via `emptyDir` where needed (backend Python, frontend Nginx)
-- NetworkPolicies: frontend ingress from OpenShift ingress; frontend → backend; backend → DNS + `my-first-model:8080`
+- NetworkPolicies: frontend ingress from OpenShift ingress; frontend → backend; backend → DNS + `my-first-model:8080` + in-namespace MCP pods; MCP Routes for external Playground access
 - Secrets referenced only by name (`packmate-llm` / key `LITELLM_API_KEY`)
 
 ## Probes
@@ -128,9 +160,13 @@ Or use content-addressed tags such as `sha-a1b2c3d4` from your pipeline.
 
 See [`components/oauth-proxy/README.md`](components/oauth-proxy/README.md). Uncomment `components:` in an overlay to enable.
 
+## Workbench (lab development)
+
+See [`workbench/README.md`](workbench/README.md) for creating the `packmate-lab` Data Science Project and code-server Workbench via the OpenShift AI UI (YAML is example-only).
+
 ## Environment summary
 
 | Variable | Source |
 |----------|--------|
-| `BASE_URL`, `MODEL`, OTEL vars | ConfigMap `packmate-config` |
+| `BASE_URL`, `MODEL`, OTEL vars, `PACKMATE_TOOL_MODE`, MCP URLs | ConfigMap `packmate-config` |
 | `LITELLM_API_KEY` | Secret `packmate-llm` (key `LITELLM_API_KEY`) |

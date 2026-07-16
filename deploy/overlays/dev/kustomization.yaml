@@ -15,6 +15,12 @@ images:
   - name: quay.io/example/packmate-frontend
     newName: quay.io/example/packmate-frontend
     newTag: sha-dev
+  - name: quay.io/example/packmate-weather-mcp
+    newName: quay.io/example/packmate-weather-mcp
+    newTag: sha-dev
+  - name: quay.io/example/packmate-baggage-policy-mcp
+    newName: quay.io/example/packmate-baggage-policy-mcp
+    newTag: sha-dev
 
 patches:
   - path: configmap-patch.yaml

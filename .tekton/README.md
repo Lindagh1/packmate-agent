@@ -19,6 +19,8 @@ Setup guide: [`docs/TEKTON_SETUP.md`](../docs/TEKTON_SETUP.md).
 | `git-revision` | Branch, tag, or commit SHA to build |
 | `output-image-backend` | Full backend image reference for push pipeline |
 | `output-image-frontend` | Full frontend image reference for push pipeline |
+| `output-image-weather-mcp` | Full weather MCP image reference for push pipeline |
+| `output-image-baggage-policy-mcp` | Full baggage-policy MCP image reference for push pipeline |
 | `gitops-branch` | Branch to update with digest-pinned manifests (push only) |
 | `gitops-overlay` | Kustomize overlay (`dev` or `prod`) to patch (push only) |
 | `evaluation-threshold` | Minimum deterministic eval score (default `0.90`) |
@@ -55,18 +57,20 @@ oc create secret generic gitops-repo-auth \
 
 1. **clone** — shallow clone at `git-revision`
 2. **backend-tests** — `pytest` in `backend/`
-3. **quality-gate** — `python -m evals.runner --mode deterministic`
-4. **frontend-ci** — `npm run lint`, `test`, `build`
-5. **validate-containerfiles** — `buildah bud` (build only, no push)
-6. **validate-manifests** — `scripts/render-manifests.sh` + `scripts/validate-manifests.sh`
-7. **security-check** — `scripts/security-check.sh` (fails on `:latest` tags and plaintext secrets)
+3. **mcp-weather-tests** / **mcp-baggage-tests** — `pytest` in `mcp-servers/weather/` and `mcp-servers/baggage-policy/`
+4. **quality-gate** — `python -m evals.runner --mode deterministic`
+5. **evalhub-optional** — runs `evaluations/scripts/run_evalhub_optional.sh` when present; otherwise skips (non-fatal when EvalHub CRD or script absent)
+6. **frontend-ci** — `npm run lint`, `test`, `build`
+7. **validate-containerfiles** — `buildah bud` for backend, frontend, and both MCP Containerfiles (build only, no push)
+8. **validate-manifests** — `scripts/render-manifests.sh` + `scripts/validate-manifests.sh`
+9. **security-check** — `scripts/security-check.sh` (fails on `:latest` tags and plaintext secrets)
 
 ### Push (`packmate-push`)
 
-Runs all PR stages, then:
+Runs all PR stages (except **evalhub-optional**), then:
 
-8. **build-push-backend** / **build-push-frontend** — buildah build + push, write digests to `shared-data`
-9. **update-gitops** — patch `deploy/overlays/<overlay>/kustomization.yaml` with `digest:` fields, commit, push
+10. **build-push-backend** / **build-push-frontend** / **build-push-weather-mcp** / **build-push-baggage-policy-mcp** — buildah build + push, write digests to `shared-data`
+11. **update-gitops** — patch `deploy/overlays/<overlay>/kustomization.yaml` with `digest:` fields for all four images, commit, push
 
 Production promotion typically sets `gitops-overlay=prod` in a separate PAC Repository or manual PipelineRun.
 

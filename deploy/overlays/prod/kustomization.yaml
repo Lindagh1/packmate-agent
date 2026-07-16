@@ -26,6 +26,12 @@ images:
   - name: quay.io/example/packmate-frontend
     newName: quay.io/example/packmate-frontend
     newTag: sha-prod
+  - name: quay.io/example/packmate-weather-mcp
+    newName: quay.io/example/packmate-weather-mcp
+    newTag: sha-prod
+  - name: quay.io/example/packmate-baggage-policy-mcp
+    newName: quay.io/example/packmate-baggage-policy-mcp
+    newTag: sha-prod
 
 patches:
   - path: delete-backend-deployment.yaml
