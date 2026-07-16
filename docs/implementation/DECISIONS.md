@@ -43,3 +43,10 @@
 - Packmate MCP servers implement **Streamable HTTP** via the official Python MCP SDK (`mcp.server.fastmcp.FastMCP.streamable_http_app()`), endpoint path **`/mcp`**.
 - SSE (`sse_app`) is not the primary Playground path; it remains available in the SDK for inspectors/debug but is not exposed as a separate Route in Packmate manifests.
 - Traveler profile stays **in-app only** (no shared MCP) to avoid leaking sensitive notes.
+
+## OpenShift AI recenter — backend tool modes
+
+- `PACKMATE_TOOL_MODE=local` (default): unit tests and laptop/Workbench local runs use in-process Python tools.
+- `PACKMATE_TOOL_MODE=mcp`: OpenShift deployments call `weather-mcp` and `baggage-policy-mcp` via Streamable HTTP; business logic is not duplicated in the backend adapters.
+- OpenShift ConfigMap defaults to `mcp` with ClusterIP URLs `http://weather-mcp:8080/mcp` and `http://baggage-policy-mcp:8080/mcp`.
+- Sensitive profile keys are rejected by `assert_safe_mcp_arguments` before any MCP call.

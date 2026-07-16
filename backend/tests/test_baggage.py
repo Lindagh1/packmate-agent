@@ -202,7 +202,11 @@ async def test_agent_executes_multiple_tools_in_one_turn() -> None:
         client=mock_client,
     )
 
-    with patch("app.agent.tools.get_weather", AsyncMock(return_value=MagicMock(model_dump=lambda: {"location": "Rome"}))):
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(
+        return_value=MagicMock(model_dump=lambda: {"location": "Rome"})
+    )
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
         result = await service.chat("Je pars à Rome", traveler_profile=profile)
 
     assert result.destination == "Rome"

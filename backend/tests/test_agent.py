@@ -111,7 +111,9 @@ async def test_agent_returns_valid_structured_response() -> None:
 
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
-    with patch("app.agent.tools.get_weather", AsyncMock(return_value=weather_result)):
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(return_value=weather_result)
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
         result = await service.chat(
             "Je pars à Rome pendant trois jours la semaine prochaine avec un bagage cabine"
         )
@@ -133,14 +135,15 @@ async def test_agent_calls_weather_tool() -> None:
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
-    mock_get_weather = AsyncMock(return_value=weather_result)
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(return_value=weather_result)
 
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
-    with patch("app.agent.tools.get_weather", mock_get_weather):
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
         await service.chat("Je pars à Rome la semaine prochaine")
 
-    mock_get_weather.assert_awaited_once_with("Rome", 7)
+    weather_adapter.get_weather.assert_awaited_once_with("Rome", 7)
 
 
 @pytest.mark.asyncio
@@ -153,10 +156,12 @@ async def test_agent_retries_after_invalid_json_then_succeeds() -> None:
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(return_value=weather_result)
 
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
-    with patch("app.agent.tools.get_weather", AsyncMock(return_value=weather_result)):
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
         result = await service.chat("Je pars à Rome")
 
     assert result.destination == "Rome"
@@ -174,10 +179,12 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(return_value=weather_result)
 
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
-    with patch("app.agent.tools.get_weather", AsyncMock(return_value=weather_result)):
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
         with pytest.raises(AgentResponseError, match="Invalid agent response after 3 attempts"):
             await service.chat("Je pars à Rome")
 

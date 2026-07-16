@@ -50,3 +50,14 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # In-namespace MCP servers (PACKMATE_TOOL_MODE=mcp).
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: weather-mcp
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: baggage-policy-mcp
+      ports:
+        - protocol: TCP
+          port: 8080

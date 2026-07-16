@@ -2,11 +2,11 @@ import json
 import logging
 
 from app.agent.context import ToolContext
-from app.models.profile import TravelerProfile
 from app.observability import TOOL_CALLS, TOOL_DURATION, Timer, span
-from app.tools.baggage import lookup_baggage_rules
+from app.tools.adapters import build_baggage_adapter, build_weather_adapter
+from app.tools.mcp_client import MCPClientError
 from app.tools.traveler_profile import lookup_traveler_profile
-from app.tools.weather import CityNotFoundError, WeatherToolError, get_weather
+from app.tools.weather import CityNotFoundError, WeatherToolError
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,8 @@ TOOL_DEFINITIONS = [
             "name": "traveler_profile",
             "description": (
                 "Return the traveler profile provided in the current request. "
-                "Call this to tailor packing recommendations."
+                "Call this to tailor packing recommendations. "
+                "This tool is local to Packmate and is never exposed as a shared MCP server."
             ),
             "parameters": {
                 "type": "object",
@@ -91,23 +92,25 @@ async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
     _safe_tool_log(name, args, context)
     timer = Timer()
     status = "ok"
+    weather = build_weather_adapter()
+    baggage = build_baggage_adapter()
 
     try:
         with span(f"tool.{name}", {"tool_name": name}):
             if name == "get_weather":
                 try:
-                    result = await get_weather(args["city"], args.get("days", 14))
+                    result = await weather.get_weather(args["city"], args.get("days", 14))
                     context.record_weather_result(result)
                     return json.dumps(result.model_dump())
                 except CityNotFoundError as exc:
                     status = "not_found"
                     return json.dumps({"error": str(exc)})
-                except WeatherToolError as exc:
+                except (WeatherToolError, MCPClientError) as exc:
                     status = "error"
                     return json.dumps({"error": str(exc)})
 
             if name == "baggage_rules":
-                result = lookup_baggage_rules(
+                result = await baggage.lookup(
                     baggage_type=args["baggage_type"],
                     item=args.get("item"),
                     category=args.get("category"),
@@ -117,6 +120,7 @@ async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
                 return json.dumps(result.model_dump())
 
             if name == "traveler_profile":
+                # Always local — never forwarded to MCP servers.
                 return json.dumps(lookup_traveler_profile(context.traveler_profile))
 
             status = "unknown"
