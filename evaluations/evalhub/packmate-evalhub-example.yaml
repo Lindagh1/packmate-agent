@@ -1,0 +1,41 @@
+# EXAMPLE ONLY — EvalHub custom resource for Packmate.
+# Do NOT apply during automated Packmate validation or CI pipelines.
+# Replace PLACEHOLDER_* values before any instructor-led apply.
+#
+# Audit (2026-07-16): EvalHub CRD present on OAI 3.4.2; no EvalHub instances existed.
+# EvalHub was not executed for this project.
+---
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: EvalHub
+metadata:
+  name: packmate-evalhub-example
+  namespace: PLACEHOLDER_NAMESPACE
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/eval-tier: level-2-optional
+spec:
+  # PLACEHOLDER: align with your TrustyAI / EvalHub operator docs for OAI 3.4.x
+  displayName: Packmate fictional packing scenarios
+  description: >
+    Optional Level 2 evaluation for Packmate demo prompts.
+    Uses fictional JSONL dataset only; not a CI merge gate.
+  dataset:
+    uri: PLACEHOLDER_DATASET_URI
+    # Example after upload to cluster storage or S3-compatible bucket:
+    # uri: s3://PLACEHOLDER_BUCKET/packmate_eval_dataset.jsonl
+    format: jsonl
+  model:
+    name: llama-32-3b-instruct
+    endpoint: PLACEHOLDER_MODEL_ENDPOINT
+    # Example in-cluster:
+    # endpoint: http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
+  evaluation:
+    tasks:
+      - name: packmate-packing-quality
+        type: PLACEHOLDER_EVAL_TASK_TYPE
+        metrics:
+          - PLACEHOLDER_METRIC_1
+          - PLACEHOLDER_METRIC_2
+    threshold: 0.75
+  output:
+    reportPath: PLACEHOLDER_REPORT_PATH

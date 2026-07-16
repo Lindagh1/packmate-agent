@@ -11,5 +11,7 @@ frontend/coverage/
 frontend/.nodeenv/
 backend/evals/reports/*
 !backend/evals/reports/.gitkeep
+evaluations/reports/*
+!evaluations/reports/.gitkeep
 deploy/rendered/*
 !deploy/rendered/.gitkeep

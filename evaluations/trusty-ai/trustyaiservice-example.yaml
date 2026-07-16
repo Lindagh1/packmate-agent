@@ -1,0 +1,32 @@
+# EXAMPLE ONLY — TrustyAIService for Packmate lab TrustyAI integration.
+# Do NOT apply during automated Packmate validation or CI pipelines.
+# Replace PLACEHOLDER_* values before any instructor-led apply.
+#
+# Audit (2026-07-16): TrustyAI operator Managed; no TrustyAIService instances existed.
+---
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: TrustyAIService
+metadata:
+  name: packmate-trustyai-example
+  namespace: PLACEHOLDER_NAMESPACE
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/eval-tier: level-2-optional
+spec:
+  replicas: 1
+  storage:
+    size: PLACEHOLDER_STORAGE_SIZE
+    # Example: 5Gi
+  metrics:
+    enabled: true
+  # PLACEHOLDER: extend per TrustyAI operator documentation for your OAI version
+  # This CR skeleton documents intent only; field names may vary by operator version.
+  serviceMonitor:
+    enabled: false
+  resources:
+    requests:
+      cpu: PLACEHOLDER_CPU_REQUEST
+      memory: PLACEHOLDER_MEMORY_REQUEST
+    limits:
+      cpu: PLACEHOLDER_CPU_LIMIT
+      memory: PLACEHOLDER_MEMORY_LIMIT
