@@ -87,6 +87,23 @@ def _safe_tool_log(name: str, args: dict, context: ToolContext) -> None:
     logger.info("Executing tool %s with args=%s", name, args)
 
 
+def _coerce_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _coerce_int(value: object, default: int) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
 async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
     args = json.loads(arguments or "{}")
     _safe_tool_log(name, args, context)
@@ -99,7 +116,8 @@ async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
         with span(f"tool.{name}", {"tool_name": name}):
             if name == "get_weather":
                 try:
-                    result = await weather.get_weather(args["city"], args.get("days", 14))
+                    days = _coerce_int(args.get("days", 14), 14)
+                    result = await weather.get_weather(args["city"], days)
                     context.record_weather_result(result)
                     return json.dumps(result.model_dump())
                 except CityNotFoundError as exc:
@@ -114,7 +132,9 @@ async def execute_tool(name: str, arguments: str, context: ToolContext) -> str:
                     baggage_type=args["baggage_type"],
                     item=args.get("item"),
                     category=args.get("category"),
-                    include_general_rules=args.get("include_general_rules", False),
+                    include_general_rules=_coerce_bool(
+                        args.get("include_general_rules", False)
+                    ),
                 )
                 context.record_baggage_result(result.warnings, result.disclaimer)
                 return json.dumps(result.model_dump())

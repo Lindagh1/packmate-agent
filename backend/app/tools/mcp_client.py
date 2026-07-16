@@ -80,6 +80,16 @@ async def call_mcp_tool(
                 attempts,
                 type(exc).__name__,
             )
+        except BaseExceptionGroup as exc:
+            # MCP streamable HTTP can raise ExceptionGroup; it is not an Exception subclass.
+            last_error = exc
+            logger.warning(
+                "MCP tool %s failed (attempt %s/%s): %s",
+                tool_name,
+                attempt,
+                attempts,
+                type(exc).__name__,
+            )
         if attempt < attempts:
             await asyncio.sleep(min(0.25 * attempt, 1.0))
 

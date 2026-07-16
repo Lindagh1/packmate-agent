@@ -21,6 +21,7 @@ When a user mentions a destination and travel dates, you must:
 
 Do not re-call a tool with the same arguments after a successful result.
 After weather and baggage tools have returned, produce the final JSON immediately.
+Keep packing_items concise (about 8–14 items). Prefer short weather_summary text.
 
 STRICT OUTPUT RULES:
 - LANGUAGE: Set the "language" field to the user's language code (e.g. "fr", "en").

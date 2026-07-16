@@ -29,7 +29,7 @@ class AgentService:
     # near ~60s even when haproxy.router.openshift.io/timeout is higher.
     MAX_TOOL_ROUNDS = 6
     MAX_PARSE_ATTEMPTS = 3
-    MAX_COMPLETION_TOKENS = 1536
+    MAX_COMPLETION_TOKENS = 1280
     ESSENTIAL_TOOLS = frozenset({"get_weather", "baggage_rules"})
 
     def __init__(
@@ -172,7 +172,10 @@ class AgentService:
             LLM_REQUESTS.labels(status="error").inc()
             LLM_ERRORS.labels(error_type=type(exc).__name__).inc()
             LLM_DURATION.observe(timer.seconds())
-            raise
+            # Surface model/gateway 4xx as agent errors (HTTP 502) instead of unhandled 500.
+            raise AgentResponseError(
+                f"LLM request failed: {type(exc).__name__}: {str(exc)[:240]}"
+            ) from exc
 
     async def chat(
         self,
@@ -209,31 +212,69 @@ class AgentService:
                     forced_final_nudge = True
                 response = await self._llm_create(client, messages)
             else:
-                response = await self._llm_create(
-                    client,
-                    messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
+                create_kwargs: dict[str, Any] = {
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "parallel_tool_calls": False,
+                }
+                try:
+                    response = await self._llm_create(
+                        client,
+                        messages,
+                        **create_kwargs,
+                    )
+                except Exception as exc:
+                    # Some gateways reject the parallel_tool_calls parameter.
+                    err_text = str(exc).lower()
+                    if "parallel_tool_calls" in err_text or "unexpected keyword" in err_text:
+                        create_kwargs.pop("parallel_tool_calls", None)
+                        response = await self._llm_create(
+                            client,
+                            messages,
+                            **create_kwargs,
+                        )
+                    elif "single tool" in err_text:
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Call only one tool at a time. "
+                                    "Prefer get_weather first, then baggage_rules, then final JSON."
+                                ),
+                            }
+                        )
+                        response = await self._llm_create(
+                            client,
+                            messages,
+                            **create_kwargs,
+                        )
+                    else:
+                        raise
             assistant_message = response.choices[0].message
 
             if assistant_message.tool_calls and not essentials_ready:
                 messages.append(self._assistant_message_to_dict(assistant_message))
-                for tool_call in assistant_message.tool_calls:
+
+                async def _run_one(tool_call: Any) -> tuple[Any, str, str]:
                     cache_key = self._tool_cache_key(
                         tool_call.function.name,
                         tool_call.function.arguments,
                     )
                     if cache_key in tool_cache:
-                        tool_result = tool_cache[cache_key]
-                    else:
-                        tool_result = await execute_tool(
-                            tool_call.function.name,
-                            tool_call.function.arguments,
-                            context,
-                        )
-                        tool_cache[cache_key] = tool_result
-                    completed_tools.add(tool_call.function.name)
+                        return tool_call, tool_cache[cache_key], tool_call.function.name
+                    result = await execute_tool(
+                        tool_call.function.name,
+                        tool_call.function.arguments,
+                        context,
+                    )
+                    tool_cache[cache_key] = result
+                    return tool_call, result, tool_call.function.name
+
+                executed = await asyncio.gather(
+                    *[_run_one(tc) for tc in assistant_message.tool_calls]
+                )
+                for tool_call, tool_result, tool_name in executed:
+                    completed_tools.add(tool_name)
                     messages.append(
                         {
                             "role": "tool",

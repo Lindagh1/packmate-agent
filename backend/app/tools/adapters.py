@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Protocol
 
@@ -88,19 +89,21 @@ class MCPBaggageAdapter:
 
         try:
             if include_general_rules:
-                general = await call_mcp_tool(
-                    self._settings.baggage_mcp_url,
-                    "get_general_baggage_rules",
-                    {"baggage_type": baggage_type},
-                    timeout_seconds=self._settings.timeout_seconds,
-                    max_retries=self._settings.max_retries,
-                )
-                checked = await call_mcp_tool(
-                    self._settings.baggage_mcp_url,
-                    "check_baggage_rules",
-                    args,
-                    timeout_seconds=self._settings.timeout_seconds,
-                    max_retries=self._settings.max_retries,
+                general, checked = await asyncio.gather(
+                    call_mcp_tool(
+                        self._settings.baggage_mcp_url,
+                        "get_general_baggage_rules",
+                        {"baggage_type": baggage_type},
+                        timeout_seconds=self._settings.timeout_seconds,
+                        max_retries=self._settings.max_retries,
+                    ),
+                    call_mcp_tool(
+                        self._settings.baggage_mcp_url,
+                        "check_baggage_rules",
+                        args,
+                        timeout_seconds=self._settings.timeout_seconds,
+                        max_retries=self._settings.max_retries,
+                    ),
                 )
                 return BaggageRulesResult(
                     warnings=list(checked.get("warnings") or []),
@@ -121,10 +124,10 @@ class MCPBaggageAdapter:
                 max_retries=self._settings.max_retries,
             )
             return BaggageRulesResult.model_validate(payload)
-        except MCPClientError as exc:
+        except (MCPClientError, BaseExceptionGroup) as exc:
             # Preserve deterministic disclaimer surface for the agent when MCP is down.
             return BaggageRulesResult(
-                warnings=[f"Baggage policy service unavailable: {exc}"],
+                warnings=[f"Baggage policy service unavailable: {type(exc).__name__}"],
                 matched_rule_ids=[],
                 general_rules=[],
                 disclaimer="DEMONSTRATION RULES ONLY. Baggage MCP unavailable.",

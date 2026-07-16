@@ -122,3 +122,5 @@ curl -sS -o /tmp/out.json -w 'http=%{http_code} total=%{time_total}s\n' --max-ti
 
 If chat still exceeds ~60s under heavy model load, use the in-cluster proxy path for demos or ask a cluster admin to raise the AWS ELB idle timeout (not a Packmate namespace change).
 
+For a hard public SLA (p95 &lt; 50s / 100% success), synchronous chat is insufficient on this sandbox: plan **streaming keep-alive** or an **async job** API. See performance section in `docs/implementation/CLUSTER_DEPLOYMENT_REPORT.md`.
+
