@@ -9,7 +9,7 @@ from app.agent.config import LLMSettings
 from app.agent.context import ToolContext
 from app.agent.enrichment import enrich_packing_response
 from app.agent.exceptions import AgentResponseError, ParseError
-from app.agent.parser import clean_model_output, extract_json_text, parse_packing_response, sanitize_json_text
+from app.agent.parser import clean_model_output, extract_json_text, parse_packing_response
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.agent.progress import ProgressCallback, ProgressStage
@@ -30,7 +30,7 @@ class AgentService:
     # Keep the tool loop short: OpenShift routes on AWS Classic LB often idle-out
     # near ~60s even when haproxy.router.openshift.io/timeout is higher.
     MAX_TOOL_ROUNDS = 6
-    MAX_PARSE_ATTEMPTS = 3
+    MAX_PARSE_ATTEMPTS = 4
     MAX_COMPLETION_TOKENS = 1280
     # Final JSON answers for multi-day trips can exceed 1280 tokens on small models.
     MAX_FINAL_COMPLETION_TOKENS = 2560
@@ -144,14 +144,26 @@ class AgentService:
         context: ToolContext,
     ) -> PackingResponse:
         """Parse model JSON, filling recoverable fields from tool context when omitted."""
+        from app.agent.parser import _loads_payload
+
         extracted = extract_json_text(text)
         try:
-            payload = json.loads(extracted)
-        except json.JSONDecodeError:
-            payload = json.loads(sanitize_json_text(extracted))
+            payload = _loads_payload(extracted)
+        except json.JSONDecodeError as exc:
+            raise ParseError(f"Invalid JSON: {exc.msg}") from exc
 
         if not isinstance(payload, dict):
             raise ParseError("Schema validation failed: expected a JSON object")
+
+        if payload.get("name") in (
+            "get_weather",
+            "baggage_rules",
+            "traveler_profile",
+            "check_baggage_rules",
+        ) and "destination" not in payload:
+            raise ParseError(
+                "Schema validation failed: tool-shaped JSON is not a PackingResponse"
+            )
 
         weather_summary = payload.get("weather_summary")
         if not isinstance(weather_summary, dict) or not weather_summary.get("location"):
@@ -203,6 +215,10 @@ class AgentService:
                         parsed = parse_packing_response(current_content)
                     except ParseError:
                         parsed = self._recover_payload(current_content, context)
+                if not parsed.packing_items:
+                    raise ParseError(
+                        "packing_items must include at least one item"
+                    )
                 return self._enrich_response(parsed, context)
             except (ParseError, json.JSONDecodeError, ValueError) as exc:
                 INVALID_RESPONSES.inc()
@@ -230,7 +246,9 @@ class AgentService:
                             "Your previous answer was invalid. "
                             f"Error: {exc}. "
                             "Return ONLY valid JSON matching the required schema. "
-                            "Include weather_summary and rules_disclaimer. "
+                            "Include destination, weather_summary, rules_disclaimer, "
+                            "and a non-empty packing_items array (8–12 items). "
+                            "Do not return tool call objects. "
                             "Do not include markdown fences or explanations."
                             f"{truncate_hint}"
                         ),

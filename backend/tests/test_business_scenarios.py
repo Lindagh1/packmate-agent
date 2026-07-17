@@ -495,7 +495,95 @@ def test_deterministic_baggage_warnings_for_powerbank_and_liquid() -> None:
     assert enriched.baggage_warnings
 
 
-def test_sync_and_sse_endpoints_return_completed_packing_response() -> None:
+def test_parser_repairs_adjacent_objects_and_rejects_tool_shaped_json() -> None:
+    from app.agent.exceptions import ParseError
+    from app.agent.parser import parse_packing_response
+
+    disclaimer = json.dumps(RULES_DISCLAIMER)
+    adjacent = (
+        '{"destination":"Rome","start_date":"2026-07-21","end_date":"2026-07-23"'
+        ',"weather_summary":{"location":"Rome","overview":"Warm."}'
+        ',"packing_items":[{"name":"Shirt","category":"Clothing","quantity":1,'
+        '"reason":"Day wear","essential":true}]'
+        ',"warnings":[],"baggage_warnings":[],"profile_considerations":[],'
+        '"rules_disclaimer":'
+        + disclaimer
+        + ',"language":"en"}'
+        '{"name":"baggage_rules","warnings":[]}'
+    )
+    broken = (
+        '{"destination": "Rome", "start_date": "2026-07-21", '
+        '"end_date": "2026-07-23", '
+        '"weather_summary": {"location": "Rome", "overview": "Warm."}, '
+        '"packing_items": [{"name": "Shirt", "category": "Clothing", '
+        '"quantity": 1, "reason": "Day wear", "essential": true}] '
+        '"warnings": [], "baggage_warnings": [], "profile_considerations": [], '
+        '"rules_disclaimer": '
+        + disclaimer
+        + ', "language": "en"}'
+    )
+    assert parse_packing_response(broken).destination == "Rome"
+    assert parse_packing_response(adjacent).destination == "Rome"
+
+    with pytest.raises(ParseError, match="tool-shaped"):
+        parse_packing_response(
+            '{"name":"baggage_rules","warnings":["x"],"disclaimer":"demo"}'
+        )
+
+
+@pytest.mark.asyncio
+async def test_empty_packing_items_triggers_parse_retry() -> None:
+    empty = _valid_payload(packing_items=[])
+    filled = _valid_payload()
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = MagicMock(
+        side_effect=[
+            _completion(
+                tool_calls=[
+                    make_tool_call("w", "get_weather", {"city": "Rome", "days": 2})
+                ],
+                finish_reason="tool_calls",
+            ),
+            _completion(
+                tool_calls=[
+                    make_tool_call("b", "baggage_rules", {"baggage_type": "cabin"})
+                ],
+                finish_reason="tool_calls",
+            ),
+            _completion(content=json.dumps(empty), finish_reason="stop"),
+            _completion(content=json.dumps(filled), finish_reason="stop"),
+        ]
+    )
+    service = AgentService(settings=_settings(), client=mock_client)
+    weather_adapter = AsyncMock()
+    weather_adapter.get_weather = AsyncMock(
+        return_value=WeatherResponse(location="Rome", forecast=[])
+    )
+    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
+        result = await service.chat("Rome trip")
+    assert len(result.packing_items) >= 1
+    assert mock_client.chat.completions.create.call_count == 4
+
+
+def test_parser_uses_json_repair_for_unescaped_quotes() -> None:
+    """Models sometimes emit unescaped quotes inside string values."""
+    from app.agent.parser import parse_packing_response
+
+    broken = (
+        '{"destination": "Lisbon", "start_date": "2026-07-20", '
+        '"end_date": "2026-07-22", '
+        '"weather_summary": {"location": "Lisbon", "overview": "Mild "sunny" day."}, '
+        '"packing_items": [{"name": "Power bank", "category": "Electronics", '
+        '"quantity": 1, "reason": "Keep devices charged", "essential": true}], '
+        '"warnings": [], "baggage_warnings": [], "profile_considerations": [], '
+        '"rules_disclaimer": '
+        + json.dumps(RULES_DISCLAIMER)
+        + ', "language": "en"}'
+    )
+    result = parse_packing_response(broken)
+    assert result.destination == "Lisbon"
+    assert result.packing_items[0].name == "Power bank"
+
     mock_response = PackingResponse.model_validate(_valid_payload())
 
     with patch("app.main.agent_service.chat", AsyncMock(return_value=mock_response)):

@@ -100,7 +100,15 @@ async def test_agent_merges_deterministic_baggage_warnings() -> None:
                 "max_temperature": "32°C",
                 "conditions": "Clear",
             },
-            "packing_items": [],
+            "packing_items": [
+                {
+                    "name": "T-shirt",
+                    "category": "Clothing",
+                    "quantity": 2,
+                    "reason": "Warm weather",
+                    "essential": True,
+                }
+            ],
             "warnings": [],
             "baggage_warnings": [],
             "profile_considerations": [],
@@ -386,7 +394,15 @@ def _valid_response_payload() -> dict:
             "max_temperature": "32°C",
             "conditions": "Clear",
         },
-        "packing_items": [],
+        "packing_items": [
+            {
+                "name": "Chemise",
+                "category": "Clothing",
+                "quantity": 2,
+                "reason": "Business",
+                "essential": True,
+            }
+        ],
         "warnings": [],
         "baggage_warnings": [],
         "profile_considerations": ["Business attire recommended."],

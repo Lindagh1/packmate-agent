@@ -31,7 +31,7 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Image | Tag | Digest |
 |-------|-----|--------|
-| packmate-backend | v2-dev | `sha256:2bde1585eae84686ce4b47b05ce32457f761230fbd9e3c64872851fc1215d2d7` |
+| packmate-backend | v2-dev | `sha256:346dc17c4edc807e055b5a4e58b95d03563ed36a1c14580f08af3f134d99714e` |
 | packmate-frontend | v2-dev | `sha256:cdf68e4b6d5f9393f747e430e9a432ec352fbe17b61eddb65cce9d3037b7b3e7` |
 | packmate-weather-mcp | v2-dev | `sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc` |
 | packmate-baggage-policy-mcp | v2-dev | `sha256:005d4ccdcc2c06afdc545e4e6ff0d5b3fc02fd4f349e1287253efe7e44036458` |
@@ -83,7 +83,7 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Suite | Résultat |
 |-------|----------|
-| Backend pytest | **114** passed |
+| Backend pytest | **116** passed |
 | Frontend lint / test / build | OK (26 tests) |
 | weather MCP tests | 6 passed |
 | baggage-policy MCP tests | 9 passed |
@@ -114,7 +114,7 @@ Logs backend contrôlés : pas de Bearer token, pas de phrase utilisateur compl�
 ## Performance Route publique — streaming SSE (post-deploy)
 
 Date : 2026-07-16
-Images : backend `sha256:2bde1585…` · frontend `sha256:cdf68e4b…`
+Images : backend `sha256:346dc17c…` · frontend `sha256:cdf68e4b…`
 Endpoint public : `POST /api/v1/chat/stream` (UI) ; sync `/api/v1/chat` conservé pour tests.
 
 ### Fiabilité métier — correction des 4 `agent_error` (sans changer le SSE)
@@ -123,40 +123,30 @@ Scénarios précédemment en échec : `hiking_dolomites`, `powerbank_checked`, `
 
 | Scénario | Cause réelle | Correction |
 |----------|--------------|------------|
-| `hiking_dolomites` / `oslo_cabin` | Le modèle émettait **plusieurs tool-calls** ; l’historique multi-tool provoquait un **400** gateway (`single tool-calls at once`) au tour JSON suivant | Exécuter **un seul** tool-call par tour (priorité weather → baggage → profile) ; réécrire l’historique en turn mono-outil |
-| `powerbank_checked` | JSON final **tronqué** (`finish_reason=length`, `max_tokens=1280`) puis `weather_summary` manquant après retries | Budget final **2560** tokens + retry ciblé si troncature ; injection déterministe de `weather_summary` / disclaimer depuis le contexte outils |
-| `liquid_cabin` | JSON quasi valide mais **mal formé** (`Expecting ',' delimiter`) ; retries LLM insuffisants | Réparation JSON (virgules manquantes / trailing) avant validation Pydantic |
+| `hiking_dolomites` / `oslo_cabin` | Multi tool-calls → historique multi-outil → **400** gateway | Un tool-call/tour + historique mono-outil |
+| `powerbank_checked` | JSON tronqué / mal formé (`finish_reason=length`, virgules, quotes) | Budget final 2560, retry troncature, `json-repair`, rejet `packing_items` vide |
+| `liquid_cabin` | JSON mal formé (`Expecting ',' delimiter`) | Réparation JSON déterministe + `json-repair` |
 
-Validations locales associées : `backend/tests/test_business_scenarios.py` (+ tests agent/baggage mis à jour). Enrichissement bagages déterministe inchangé.
+Autres renforcements : sélection du candidat JSON PackingResponse (ignore les objets tool-shaped), injection `weather_summary`/disclaimer depuis le tool context, 4 tentatives de parse.
 
-### Campagne 15 scénarios (Route publique) — baseline streaming (avant fix métier)
+### Campagne 15 scénarios — post fix métier (backend `sha256:346dc17c…`)
+
+Date : 2026-07-17 · Route publique SSE · modèle `llama-32-3b-instruct` Ready.
 
 | Métrique | Valeur |
 |----------|--------|
-| Connexions avec `started` | **100 %** (15/15) |
-| Flux terminés (`completed` ou `error` structuré) | **100 %** |
-| `completed` métier OK | 11/15 (73 %) — **corrigé ensuite** (voir campagne post-fix) |
-| Erreurs métier structurées (`agent_error`) | 4/15 (parse/LLM — transport OK) |
-| Coupures idle ELB / EOF ~60s | **0** |
-| Contenu sensible dans le flux | **0** |
-| Heartbeat max gap estimé | **10 s** |
-| TTFE (8 samples) | min 0.33 s · moy 0.38 s · p95 0.43 s · max 0.43 s |
-| Durée min / médiane / max | 24.0 s / 31.1 s / 115.1 s |
-| Requêtes **>60 s** avec `completed` | **≥1** (`rome_short` ≈60.7 s) |
-| Requêtes longues avec heartbeats puis `error` | plusieurs (ex. hiking ≈115 s) — prouve la survie idle |
+| Connexions `started` | **15/15 (100 %)** |
+| Fin structurée (`completed`/`error`) | **15/15 (100 %)** |
+| Transport EOF / ELB idle | **0** |
+| Fuite sensible | **0** |
+| Heartbeat max gap | **≤10.1 s** |
+| TTFE moy / max | **0.49 s / 1.24 s** |
+| **4 scénarios cibles** | **4/4 `completed` métier** (hiking, powerbank, liquid, oslo_cabin) |
+| Pass séquentiel unique | 12/15 `biz_ok` (flakes LLM sur rome_cabin, lisbon_leisure, reykjavik) |
+| Retry immédiat des 3 flakes | **3/3 OK** → **15/15 scénarios validés** |
+| Durée min / médiane / max (pass) | 27.5 s / 56.9 s / 115.5 s |
 
-### Campagne 15 scénarios — post fix métier (backend `sha256:2bde1585…`)
-
-- BuildConfig `packmate-backend` + digest overlay + rollout backend-only : **OK** (2026-07-16).
-- Validation interne AgentService (avant panne cluster) :
-  - `hiking` → **completed** (~42 s, 12 items, weather + baggage warnings)
-  - `powerbank` → **completed** (~61 s, weather + baggage warnings)
-  - `liquid` / `oslo_cabin` : non rejoués (coupure API mid-run)
-- **Campagne publique 15/15 SSE** : **bloquée** — sandbox RHDP inaccessible
-  (TLS EOF / connection refused sur API `:6443` et apps `*.apps…` depuis 2026-07-16 ~17:45
-  jusqu’au contrôle 2026-07-17). Protocole SSE / Nginx / Route **non modifiés**.
-
-Dès le retour du cluster, relancer `/tmp/packmate-sse-campaign15.py` (scénarios `/tmp/stream-scenarios.tsv`).
+Quality gate local : **0.9559** ≥ 0.90.
 
 ### Critères transport vs métier
 
@@ -198,7 +188,7 @@ Utiliser le streaming pour toute démo Route publique. Conserver sync pour pytes
 8. **ExceptionGroup MCP** → non capturé par `except Exception` → wrap dans le client MCP.
 9. **Historique multi tool-calls** (hiking/oslo) → 400 `single tool-calls at once` sur le tour JSON → un tool-call/tour + historique mono-outil.
 10. **JSON tronqué / schema incomplet** (powerbank) → `max_tokens` final 2560 + retry troncature + injection `weather_summary` depuis le tool context.
-11. **JSON mal formé** (liquid, virgules manquantes) → réparation déterministe dans le parser avant Pydantic.
+11. **JSON mal formé** (virgules / quotes) → réparation déterministe + dépendance `json-repair` ; rejet des `packing_items` vides et des JSON tool-shaped.
 
 ## Fonctionnalités encore manuelles
 

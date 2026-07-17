@@ -176,6 +176,7 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
             _make_completion(_make_message(content="still not json", tool_calls=None)),
             _make_completion(_make_message(content='{"incomplete": true}', tool_calls=None)),
             _make_completion(_make_message(content="nope", tool_calls=None)),
+            _make_completion(_make_message(content="still nope", tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
@@ -185,7 +186,7 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
     with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
-        with pytest.raises(AgentResponseError, match="Invalid agent response after 3 attempts"):
+        with pytest.raises(AgentResponseError, match="Invalid agent response after 4 attempts"):
             await service.chat("Je pars à Rome")
 
 

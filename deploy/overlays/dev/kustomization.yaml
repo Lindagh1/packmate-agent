@@ -6,7 +6,7 @@ resources:
 images:
 - name: quay.io/example/packmate-backend
   newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-backend
-  digest: sha256:2bde1585eae84686ce4b47b05ce32457f761230fbd9e3c64872851fc1215d2d7
+  digest: sha256:346dc17c4edc807e055b5a4e58b95d03563ed36a1c14580f08af3f134d99714e
 - name: quay.io/example/packmate-frontend
   newName: image-registry.openshift-image-registry.svc:5000/packmate-lab/packmate-frontend
   digest: sha256:cdf68e4b6d5f9393f747e430e9a432ec352fbe17b61eddb65cce9d3037b7b3e7

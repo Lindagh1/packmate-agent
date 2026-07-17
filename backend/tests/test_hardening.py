@@ -56,7 +56,15 @@ def _valid_response(**overrides: object) -> PackingResponse:
             "max_temperature": "32°C",
             "conditions": "Clear",
         },
-        "packing_items": [],
+        "packing_items": [
+            {
+                "name": "Chemise",
+                "category": "Clothing",
+                "quantity": 2,
+                "reason": "Business",
+                "essential": True,
+            }
+        ],
         "warnings": [],
         "baggage_warnings": [],
         "profile_considerations": [],
@@ -144,7 +152,6 @@ def test_general_baggage_rules_applied_without_llm_tool_call() -> None:
 @pytest.mark.asyncio
 async def test_general_baggage_rules_applied_in_final_response_without_tool_call() -> None:
     llm_payload = _valid_response(
-        packing_items=[],
         baggage_warnings=["LLM warning that must be ignored"],
     ).model_dump(mode="json")
     mock_client = MagicMock()
