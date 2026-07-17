@@ -16,6 +16,12 @@ _JSON_FENCE_PATTERN = re.compile(
 )
 # Models sometimes emit \u escapes that are not valid 4-hex sequences.
 _INVALID_UNICODE_ESCAPE = re.compile(r"\\u(?![0-9a-fA-F]{4})")
+_TRAILING_COMMA = re.compile(r",(\s*[}\]])")
+# Missing comma before the next object key on a following line.
+_MISSING_COMMA_BEFORE_KEY = re.compile(
+    r'("(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?)(\s*\n\s*")'
+)
+_MISSING_COMMA_AFTER_CONTAINER = re.compile(r'([}\]])(\s*")')
 
 
 def clean_model_output(text: str) -> str:
@@ -38,7 +44,11 @@ def extract_json_text(text: str) -> str:
 
 def sanitize_json_text(text: str) -> str:
     """Repair common model JSON defects that break json.loads."""
-    return _INVALID_UNICODE_ESCAPE.sub(r"\\\\u", text)
+    repaired = _INVALID_UNICODE_ESCAPE.sub(r"\\\\u", text)
+    repaired = _TRAILING_COMMA.sub(r"\1", repaired)
+    repaired = _MISSING_COMMA_BEFORE_KEY.sub(r"\1,\2", repaired)
+    repaired = _MISSING_COMMA_AFTER_CONTAINER.sub(r"\1,\2", repaired)
+    return repaired
 
 
 def parse_packing_response(text: str) -> PackingResponse:
@@ -50,6 +60,9 @@ def parse_packing_response(text: str) -> PackingResponse:
             payload = json.loads(sanitize_json_text(extracted))
         except json.JSONDecodeError as exc:
             raise ParseError(f"Invalid JSON: {exc.msg}") from exc
+
+    if not isinstance(payload, dict):
+        raise ParseError("Schema validation failed: expected a JSON object")
 
     try:
         return PackingResponse.model_validate(payload)

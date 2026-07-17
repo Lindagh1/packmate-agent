@@ -19,9 +19,11 @@ When a user mentions a destination and travel dates, you must:
 4. ANALYZE weather, profile, and baggage constraints for the specific travel dates.
 5. RETURN a single JSON object that matches the required schema exactly.
 
+Call only ONE tool per turn. Never emit multiple tool calls in the same response.
 Do not re-call a tool with the same arguments after a successful result.
 After weather and baggage tools have returned, produce the final JSON immediately.
-Keep packing_items concise (about 8–14 items). Prefer short weather_summary text.
+Keep packing_items concise (about 8–12 items). Prefer short weather_summary text.
+Always include weather_summary (location + overview) and rules_disclaimer in the final JSON.
 
 STRICT OUTPUT RULES:
 - LANGUAGE: Set the "language" field to the user's language code (e.g. "fr", "en").

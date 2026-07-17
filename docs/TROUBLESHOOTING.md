@@ -124,3 +124,32 @@ Expect `event: started` quickly, optional `progress` / `heartbeat`, then `comple
 
 If heartbeats are missing, check Nginx `proxy_buffering off` for `/api/v1/chat/stream` and response headers `X-Accel-Buffering: no`.
 
+## Public stream ends with `agent_error` (transport OK)
+
+Symptoms:
+
+- SSE shows `started` / `progress` / `heartbeat`, then `event: error` with `agent_error`
+- No ELB EOF / 504; heartbeats keep the connection alive
+- Same scenario may succeed intermittently
+
+Typical causes on `llama-32-3b-instruct` (Packmate lab):
+
+1. **Multi tool-calls in one assistant turn** — gateway returns 400 (`This model only supports single tool-calls at once`) on the next completion once multi-tool history is present. Fix: process **one** tool call per round and rewrite history accordingly.
+2. **Truncated final JSON** — `finish_reason=length` at the completion budget. Fix: higher final `max_tokens`, truncation retry, recover `weather_summary` from tool context when omitted.
+3. **Malformed JSON** — missing commas / prose wrappers. Fix: deterministic JSON repair in the parser, then Pydantic validation (never skip validation).
+
+Do **not** disable baggage rules, MCP, or Pydantic validation, and do not return a hardcoded packing list.
+
+Reproduce without logging raw model output:
+
+```bash
+oc -n packmate-lab exec deploy/packmate-backend -- python -c '
+import asyncio, time
+from app.agent.service import AgentService
+async def main():
+  r = await AgentService().chat("Weekend in Oslo in February, cabin bag only, expect snow.")
+  print(r.destination, len(r.packing_items), len(r.baggage_warnings))
+asyncio.run(main())
+'
+```
+

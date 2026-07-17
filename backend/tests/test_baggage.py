@@ -156,7 +156,8 @@ async def test_agent_merges_deterministic_baggage_warnings() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_executes_multiple_tools_in_one_turn() -> None:
+async def test_agent_processes_one_tool_when_model_emits_multiple() -> None:
+    """llama-32 gateway rejects multi-tool history; only the first priority tool is kept."""
     tool_calls = [
         make_tool_call("call_weather", "get_weather", {"city": "Rome", "days": 3}),
         make_tool_call(
@@ -171,7 +172,27 @@ async def test_agent_executes_multiple_tools_in_one_turn() -> None:
         side_effect=[
             MagicMock(
                 choices=[
-                    MagicMock(message=MagicMock(content=None, tool_calls=tool_calls))
+                    MagicMock(
+                        message=MagicMock(content=None, tool_calls=tool_calls),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content=None,
+                            tool_calls=[
+                                make_tool_call(
+                                    "call_baggage_2",
+                                    "baggage_rules",
+                                    {"baggage_type": "cabin", "item": "knife"},
+                                )
+                            ],
+                        ),
+                        finish_reason="tool_calls",
+                    )
                 ]
             ),
             MagicMock(
@@ -180,7 +201,8 @@ async def test_agent_executes_multiple_tools_in_one_turn() -> None:
                         message=MagicMock(
                             content=json.dumps(_valid_response_payload()),
                             tool_calls=None,
-                        )
+                        ),
+                        finish_reason="stop",
                     )
                 ]
             ),
@@ -210,7 +232,15 @@ async def test_agent_executes_multiple_tools_in_one_turn() -> None:
         result = await service.chat("Je pars à Rome", traveler_profile=profile)
 
     assert result.destination == "Rome"
-    assert mock_client.chat.completions.create.call_count == 2
+    assert mock_client.chat.completions.create.call_count == 3
+    # messages list is mutated in place; assert every assistant tool turn stays single-call.
+    final_messages = mock_client.chat.completions.create.call_args_list[-1].kwargs["messages"]
+    assistant_tool_turns = [
+        m for m in final_messages if m.get("role") == "assistant" and m.get("tool_calls")
+    ]
+    assert assistant_tool_turns
+    assert all(len(m["tool_calls"]) == 1 for m in assistant_tool_turns)
+    assert assistant_tool_turns[0]["tool_calls"][0]["function"]["name"] == "get_weather"
 
 
 def test_packing_response_accepts_iso_dates() -> None:

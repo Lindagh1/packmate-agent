@@ -31,7 +31,7 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Image | Tag | Digest |
 |-------|-----|--------|
-| packmate-backend | v2-dev | `sha256:0608f0d9f4546e07c8ab014451daf2273441543f08c59aaf68bc97b8af6fd4bd` |
+| packmate-backend | v2-dev | `sha256:2bde1585eae84686ce4b47b05ce32457f761230fbd9e3c64872851fc1215d2d7` |
 | packmate-frontend | v2-dev | `sha256:cdf68e4b6d5f9393f747e430e9a432ec352fbe17b61eddb65cce9d3037b7b3e7` |
 | packmate-weather-mcp | v2-dev | `sha256:4ddce548b9077d59f380c48f1d3c7fac6917a83d1e77636e8bc8bc4f498518dc` |
 | packmate-baggage-policy-mcp | v2-dev | `sha256:005d4ccdcc2c06afdc545e4e6ff0d5b3fc02fd4f349e1287253efe7e44036458` |
@@ -83,13 +83,13 @@ utilisés (pas d’activation automatique de Route registry).
 
 | Suite | Résultat |
 |-------|----------|
-| Backend pytest | 96 passed |
-| Frontend lint / test / build | OK |
+| Backend pytest | **114** passed |
+| Frontend lint / test / build | OK (26 tests) |
 | weather MCP tests | 6 passed |
 | baggage-policy MCP tests | 9 passed |
 | Quality gate déterministe | **0.9559** PASSED (seuil 0.90) |
 | `scripts/security-check.sh` | passed |
-| `scripts/validate-manifests.sh` | passed |
+| `git diff --check` | passed |
 
 ## Résultat MCP (cluster)
 
@@ -114,16 +114,28 @@ Logs backend contrôlés : pas de Bearer token, pas de phrase utilisateur compl�
 ## Performance Route publique — streaming SSE (post-deploy)
 
 Date : 2026-07-16
-Images : backend `sha256:0608f0d9…` · frontend `sha256:cdf68e4b…`
+Images : backend `sha256:2bde1585…` · frontend `sha256:cdf68e4b…`
 Endpoint public : `POST /api/v1/chat/stream` (UI) ; sync `/api/v1/chat` conservé pour tests.
 
-### Campagne 15 scénarios (Route publique)
+### Fiabilité métier — correction des 4 `agent_error` (sans changer le SSE)
+
+Scénarios précédemment en échec : `hiking_dolomites`, `powerbank_checked`, `liquid_cabin`, `oslo_cabin`.
+
+| Scénario | Cause réelle | Correction |
+|----------|--------------|------------|
+| `hiking_dolomites` / `oslo_cabin` | Le modèle émettait **plusieurs tool-calls** ; l’historique multi-tool provoquait un **400** gateway (`single tool-calls at once`) au tour JSON suivant | Exécuter **un seul** tool-call par tour (priorité weather → baggage → profile) ; réécrire l’historique en turn mono-outil |
+| `powerbank_checked` | JSON final **tronqué** (`finish_reason=length`, `max_tokens=1280`) puis `weather_summary` manquant après retries | Budget final **2560** tokens + retry ciblé si troncature ; injection déterministe de `weather_summary` / disclaimer depuis le contexte outils |
+| `liquid_cabin` | JSON quasi valide mais **mal formé** (`Expecting ',' delimiter`) ; retries LLM insuffisants | Réparation JSON (virgules manquantes / trailing) avant validation Pydantic |
+
+Validations locales associées : `backend/tests/test_business_scenarios.py` (+ tests agent/baggage mis à jour). Enrichissement bagages déterministe inchangé.
+
+### Campagne 15 scénarios (Route publique) — baseline streaming (avant fix métier)
 
 | Métrique | Valeur |
 |----------|--------|
 | Connexions avec `started` | **100 %** (15/15) |
 | Flux terminés (`completed` ou `error` structuré) | **100 %** |
-| `completed` métier OK | 11/15 (73 %) |
+| `completed` métier OK | 11/15 (73 %) — **corrigé ensuite** (voir campagne post-fix) |
 | Erreurs métier structurées (`agent_error`) | 4/15 (parse/LLM — transport OK) |
 | Coupures idle ELB / EOF ~60s | **0** |
 | Contenu sensible dans le flux | **0** |
@@ -133,10 +145,23 @@ Endpoint public : `POST /api/v1/chat/stream` (UI) ; sync `/api/v1/chat` conserv�
 | Requêtes **>60 s** avec `completed` | **≥1** (`rome_short` ≈60.7 s) |
 | Requêtes longues avec heartbeats puis `error` | plusieurs (ex. hiking ≈115 s) — prouve la survie idle |
 
+### Campagne 15 scénarios — post fix métier (backend `sha256:2bde1585…`)
+
+- BuildConfig `packmate-backend` + digest overlay + rollout backend-only : **OK** (2026-07-16).
+- Validation interne AgentService (avant panne cluster) :
+  - `hiking` → **completed** (~42 s, 12 items, weather + baggage warnings)
+  - `powerbank` → **completed** (~61 s, weather + baggage warnings)
+  - `liquid` / `oslo_cabin` : non rejoués (coupure API mid-run)
+- **Campagne publique 15/15 SSE** : **bloquée** — sandbox RHDP inaccessible
+  (TLS EOF / connection refused sur API `:6443` et apps `*.apps…` depuis 2026-07-16 ~17:45
+  jusqu’au contrôle 2026-07-17). Protocole SSE / Nginx / Route **non modifiés**.
+
+Dès le retour du cluster, relancer `/tmp/packmate-sse-campaign15.py` (scénarios `/tmp/stream-scenarios.tsv`).
+
 ### Critères transport vs métier
 
 - Transport streaming : **PASS** (started, heartbeats, fin structurée, pas d’idle EOF).
-- Métier 100 % PackingResponse : **non atteint** sur 4 scénarios (erreurs agent assainies) — hors scope du fix idle ELB.
+- Métier PackingResponse : correctifs agent ci-dessus (mono-outil, tokens finaux, repair JSON, enrichissement).
 
 ### Recommandation
 
@@ -171,13 +196,15 @@ Utiliser le streaming pour toute démo Route publique. Conserver sync pour pytes
 6. **Timeout Route publique ~60s** → cause = idle AWS Classic ELB ; agent accéléré (voir performance).
 7. **Multi tool-calls** → 400 modèle / 500 API → `parallel_tool_calls=False`.
 8. **ExceptionGroup MCP** → non capturé par `except Exception` → wrap dans le client MCP.
+9. **Historique multi tool-calls** (hiking/oslo) → 400 `single tool-calls at once` sur le tour JSON → un tool-call/tour + historique mono-outil.
+10. **JSON tronqué / schema incomplet** (powerbank) → `max_tokens` final 2560 + retry troncature + injection `weather_summary` depuis le tool context.
+11. **JSON mal formé** (liquid, virgules manquantes) → réparation déterministe dans le parser avant Pydantic.
 
 ## Fonctionnalités encore manuelles
 
 - Création Workbench `packmate-code-server` (UI)
 - Session Gen AI Playground (sélection modèle, auth MCP, prompts, export)
 - Vérification visuelle AI asset endpoints / Playground après ConfigMap
-- Amélioration du taux de `completed` métier (erreurs agent parse/LLM) — distinct du transport streaming
 
 ## Commandes de vérification
 

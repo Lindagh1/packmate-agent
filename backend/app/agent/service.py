@@ -3,12 +3,13 @@ import json
 from typing import Any
 
 from openai import OpenAI
+from pydantic import ValidationError
 
 from app.agent.config import LLMSettings
 from app.agent.context import ToolContext
 from app.agent.enrichment import enrich_packing_response
-from app.agent.exceptions import AgentResponseError, LLMConfigurationError, ParseError
-from app.agent.parser import clean_model_output, parse_packing_response
+from app.agent.exceptions import AgentResponseError, ParseError
+from app.agent.parser import clean_model_output, extract_json_text, parse_packing_response, sanitize_json_text
 from app.agent.prompts import build_system_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.agent.progress import ProgressCallback, ProgressStage
@@ -31,7 +32,10 @@ class AgentService:
     MAX_TOOL_ROUNDS = 6
     MAX_PARSE_ATTEMPTS = 3
     MAX_COMPLETION_TOKENS = 1280
+    # Final JSON answers for multi-day trips can exceed 1280 tokens on small models.
+    MAX_FINAL_COMPLETION_TOKENS = 2560
     ESSENTIAL_TOOLS = frozenset({"get_weather", "baggage_rules"})
+    TOOL_PRIORITY = ("get_weather", "baggage_rules", "traveler_profile")
 
     def __init__(
         self,
@@ -69,6 +73,24 @@ class AgentService:
             normalized = raw
         return (name, normalized)
 
+    @classmethod
+    def _select_single_tool_call(
+        cls,
+        tool_calls: list[Any],
+        completed_tools: set[str],
+    ) -> Any:
+        """Keep only one tool call: the llama-32 gateway rejects multi-tool history."""
+        if not tool_calls:
+            raise AgentResponseError("Model returned an empty tool_calls list.")
+        by_name = {tool_call.function.name: tool_call for tool_call in tool_calls}
+        for name in cls.TOOL_PRIORITY:
+            if name in by_name and name not in completed_tools:
+                return by_name[name]
+        for tool_call in tool_calls:
+            if tool_call.function.name not in completed_tools:
+                return tool_call
+        return tool_calls[0]
+
     @staticmethod
     def _assistant_message_to_dict(message: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {"role": "assistant", "content": message.content}
@@ -85,6 +107,65 @@ class AgentService:
                 for tool_call in message.tool_calls
             ]
         return payload
+
+    @staticmethod
+    def _finish_reason(response: Any) -> str | None:
+        choice = response.choices[0]
+        return getattr(choice, "finish_reason", None)
+
+    def _weather_summary_from_context(self, context: ToolContext) -> dict[str, Any] | None:
+        weather = context.weather_response
+        if weather is None:
+            return None
+        daily = [
+            {
+                "date": day.date,
+                "min": day.min,
+                "max": day.max,
+                "condition": day.condition,
+            }
+            for day in weather.forecast[:7]
+        ]
+        mins = [day.min for day in weather.forecast if day.min]
+        maxs = [day.max for day in weather.forecast if day.max]
+        conditions = [day.condition for day in weather.forecast if day.condition]
+        return {
+            "location": weather.location,
+            "overview": f"Forecast for {weather.location}.",
+            "min_temperature": mins[0] if mins else None,
+            "max_temperature": maxs[-1] if maxs else None,
+            "conditions": ", ".join(dict.fromkeys(conditions)) if conditions else None,
+            "daily_forecast": daily,
+        }
+
+    def _recover_payload(
+        self,
+        text: str,
+        context: ToolContext,
+    ) -> PackingResponse:
+        """Parse model JSON, filling recoverable fields from tool context when omitted."""
+        extracted = extract_json_text(text)
+        try:
+            payload = json.loads(extracted)
+        except json.JSONDecodeError:
+            payload = json.loads(sanitize_json_text(extracted))
+
+        if not isinstance(payload, dict):
+            raise ParseError("Schema validation failed: expected a JSON object")
+
+        weather_summary = payload.get("weather_summary")
+        if not isinstance(weather_summary, dict) or not weather_summary.get("location"):
+            injected = self._weather_summary_from_context(context)
+            if injected is not None:
+                payload["weather_summary"] = injected
+
+        if not payload.get("rules_disclaimer") and context.rules_disclaimer:
+            payload["rules_disclaimer"] = context.rules_disclaimer
+
+        try:
+            return PackingResponse.model_validate(payload)
+        except ValidationError as exc:
+            raise ParseError(f"Schema validation failed: {exc}") from exc
 
     def _enrich_response(
         self,
@@ -109,15 +190,21 @@ class AgentService:
         messages: list[dict[str, Any]],
         content: str,
         context: ToolContext,
+        *,
+        truncated: bool = False,
     ) -> PackingResponse:
         current_content = content
+        was_truncated = truncated
 
         for attempt in range(self.MAX_PARSE_ATTEMPTS):
             try:
                 with span("parser.packing_response", {"attempt": attempt + 1}):
-                    parsed = parse_packing_response(current_content)
+                    try:
+                        parsed = parse_packing_response(current_content)
+                    except ParseError:
+                        parsed = self._recover_payload(current_content, context)
                 return self._enrich_response(parsed, context)
-            except ParseError as exc:
+            except (ParseError, json.JSONDecodeError, ValueError) as exc:
                 INVALID_RESPONSES.inc()
                 if attempt >= self.MAX_PARSE_ATTEMPTS - 1:
                     raise AgentResponseError(
@@ -130,6 +217,12 @@ class AgentService:
                         "content": clean_model_output(current_content),
                     }
                 )
+                truncate_hint = (
+                    " The previous answer was truncated; return a shorter complete JSON "
+                    "with fewer packing_items (8–12) and a compact weather_summary."
+                    if was_truncated
+                    else ""
+                )
                 messages.append(
                     {
                         "role": "user",
@@ -137,7 +230,9 @@ class AgentService:
                             "Your previous answer was invalid. "
                             f"Error: {exc}. "
                             "Return ONLY valid JSON matching the required schema. "
+                            "Include weather_summary and rules_disclaimer. "
                             "Do not include markdown fences or explanations."
+                            f"{truncate_hint}"
                         ),
                     }
                 )
@@ -145,9 +240,10 @@ class AgentService:
                 correction = await self._llm_create(
                     client,
                     messages,
-                    max_tokens=self.MAX_COMPLETION_TOKENS,
+                    max_tokens=self.MAX_FINAL_COMPLETION_TOKENS,
                 )
                 current_content = correction.choices[0].message.content or ""
+                was_truncated = self._finish_reason(correction) == "length"
 
         raise AgentResponseError("Unable to parse agent response.")
 
@@ -187,6 +283,53 @@ class AgentService:
             return
         await on_progress(stage)
 
+    async def _generate_final_json(
+        self,
+        client: OpenAI,
+        messages: list[dict[str, Any]],
+        context: ToolContext,
+        on_progress: ProgressCallback | None,
+    ) -> PackingResponse:
+        await self._emit_progress(on_progress, "generating")
+        response = await self._llm_create(
+            client,
+            messages,
+            max_tokens=self.MAX_FINAL_COMPLETION_TOKENS,
+        )
+        content = response.choices[0].message.content or ""
+        truncated = self._finish_reason(response) == "length"
+
+        if truncated and content:
+            # One targeted expansion retry when the first final answer hits the token cap.
+            messages.append({"role": "assistant", "content": clean_model_output(content)})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous JSON was truncated. Return ONLY a complete valid "
+                        "JSON object with 8–12 packing_items and a short weather_summary."
+                    ),
+                }
+            )
+            response = await self._llm_create(
+                client,
+                messages,
+                max_tokens=self.MAX_FINAL_COMPLETION_TOKENS,
+            )
+            content = response.choices[0].message.content or ""
+            truncated = self._finish_reason(response) == "length"
+
+        if not content:
+            raise AgentResponseError("Model returned an empty final answer.")
+
+        return await self._parse_with_retries(
+            client,
+            messages,
+            content,
+            context,
+            truncated=truncated,
+        )
+
     async def chat(
         self,
         message: str,
@@ -224,84 +367,99 @@ class AgentService:
                         }
                     )
                     forced_final_nudge = True
-                await self._emit_progress(on_progress, "generating")
-                response = await self._llm_create(client, messages)
-            else:
-                create_kwargs: dict[str, Any] = {
-                    "tools": tools,
-                    "tool_choice": "auto",
-                    "parallel_tool_calls": False,
-                }
-                try:
+                return await self._generate_final_json(
+                    client, messages, context, on_progress
+                )
+
+            create_kwargs: dict[str, Any] = {
+                "tools": tools,
+                "tool_choice": "auto",
+                "parallel_tool_calls": False,
+            }
+            try:
+                response = await self._llm_create(
+                    client,
+                    messages,
+                    **create_kwargs,
+                )
+            except AgentResponseError as exc:
+                err_text = str(exc).lower()
+                # Some gateways reject the parallel_tool_calls parameter.
+                if "parallel_tool_calls" in err_text or "unexpected keyword" in err_text:
+                    create_kwargs.pop("parallel_tool_calls", None)
                     response = await self._llm_create(
                         client,
                         messages,
                         **create_kwargs,
                     )
-                except Exception as exc:
-                    # Some gateways reject the parallel_tool_calls parameter.
-                    err_text = str(exc).lower()
-                    if "parallel_tool_calls" in err_text or "unexpected keyword" in err_text:
-                        create_kwargs.pop("parallel_tool_calls", None)
-                        response = await self._llm_create(
-                            client,
-                            messages,
-                            **create_kwargs,
-                        )
-                    elif "single tool" in err_text:
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": (
-                                    "Call only one tool at a time. "
-                                    "Prefer get_weather first, then baggage_rules, then final JSON."
-                                ),
-                            }
-                        )
-                        response = await self._llm_create(
-                            client,
-                            messages,
-                            **create_kwargs,
-                        )
-                    else:
-                        raise
-            assistant_message = response.choices[0].message
-
-            if assistant_message.tool_calls and not essentials_ready:
-                messages.append(self._assistant_message_to_dict(assistant_message))
-
-                async def _run_one(tool_call: Any) -> tuple[Any, str, str]:
-                    name = tool_call.function.name
-                    if name == "get_weather":
-                        await self._emit_progress(on_progress, "weather")
-                    elif name == "baggage_rules":
-                        await self._emit_progress(on_progress, "baggage_rules")
-                    cache_key = self._tool_cache_key(
-                        name,
-                        tool_call.function.arguments,
-                    )
-                    if cache_key in tool_cache:
-                        return tool_call, tool_cache[cache_key], name
-                    result = await execute_tool(
-                        name,
-                        tool_call.function.arguments,
-                        context,
-                    )
-                    tool_cache[cache_key] = result
-                    return tool_call, result, name
-
-                executed = await asyncio.gather(
-                    *[_run_one(tc) for tc in assistant_message.tool_calls]
-                )
-                for tool_call, tool_result, tool_name in executed:
-                    completed_tools.add(tool_name)
+                elif "single tool" in err_text:
                     messages.append(
                         {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": tool_result,
+                            "role": "user",
+                            "content": (
+                                "Call only one tool at a time. "
+                                "Prefer get_weather first, then baggage_rules, then final JSON."
+                            ),
                         }
                     )
+                    response = await self._llm_create(
+                        client,
+                        messages,
+                        **create_kwargs,
+                    )
+                else:
+                    raise
+            assistant_message = response.choices[0].message
+            tool_calls = list(assistant_message.tool_calls or [])
+
+            if tool_calls:
+                selected = self._select_single_tool_call(
+                    tool_calls,
+                    completed_tools,
+                )
+                # Rewrite history as a single tool-call turn (required by llama-32 gateway).
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_message.content,
+                        "tool_calls": [
+                            {
+                                "id": selected.id,
+                                "type": "function",
+                                "function": {
+                                    "name": selected.function.name,
+                                    "arguments": selected.function.arguments,
+                                },
+                            }
+                        ],
+                    }
+                )
+
+                name = selected.function.name
+                if name == "get_weather":
+                    await self._emit_progress(on_progress, "weather")
+                elif name == "baggage_rules":
+                    await self._emit_progress(on_progress, "baggage_rules")
+
+                cache_key = self._tool_cache_key(name, selected.function.arguments)
+                if cache_key in tool_cache:
+                    tool_result = tool_cache[cache_key]
+                else:
+                    tool_result = await execute_tool(
+                        name,
+                        selected.function.arguments,
+                        context,
+                    )
+                    tool_cache[cache_key] = tool_result
+
+                completed_tools.add(name)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": selected.id,
+                        "content": tool_result,
+                    }
+                )
                 continue
 
             if assistant_message.content:
@@ -311,6 +469,7 @@ class AgentService:
                     messages,
                     assistant_message.content,
                     context,
+                    truncated=self._finish_reason(response) == "length",
                 )
 
         # Force a schema JSON answer without further tool calls (small models).
@@ -324,17 +483,4 @@ class AgentService:
                 ),
             }
         )
-        await self._emit_progress(on_progress, "generating")
-        final = await self._llm_create(client, messages)
-        final_content = final.choices[0].message.content or ""
-        if final_content:
-            return await self._parse_with_retries(
-                client,
-                messages,
-                final_content,
-                context,
-            )
-
-        raise AgentResponseError(
-            "Agent exceeded maximum tool rounds without a final answer."
-        )
+        return await self._generate_final_json(client, messages, context, on_progress)
