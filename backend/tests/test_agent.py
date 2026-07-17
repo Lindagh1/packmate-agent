@@ -177,6 +177,14 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
             _make_completion(_make_message(content='{"incomplete": true}', tool_calls=None)),
             _make_completion(_make_message(content="nope", tool_calls=None)),
             _make_completion(_make_message(content="still nope", tool_calls=None)),
+            # Bounded outer retry reuses the weather cache; model asks again then fails parse.
+            _make_completion(
+                _make_message(tool_calls=[_make_tool_call(tool_id="call_weather_retry")])
+            ),
+            _make_completion(_make_message(content="still not json", tool_calls=None)),
+            _make_completion(_make_message(content='{"incomplete": true}', tool_calls=None)),
+            _make_completion(_make_message(content="nope", tool_calls=None)),
+            _make_completion(_make_message(content="still nope", tool_calls=None)),
         ]
     )
     weather_result = WeatherResponse(location="Rome", forecast=[])
@@ -185,9 +193,14 @@ async def test_agent_fails_after_multiple_invalid_responses() -> None:
 
     service = AgentService(settings=_configured_settings(), client=mock_client)
 
-    with patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter):
+    with (
+        patch("app.agent.tools.build_weather_adapter", return_value=weather_adapter),
+        patch("app.agent.service.retry_delay_seconds", return_value=0),
+    ):
         with pytest.raises(AgentResponseError, match="Invalid agent response after 4 attempts"):
             await service.chat("Je pars à Rome")
+
+    assert weather_adapter.get_weather.await_count == 1
 
 
 @pytest.mark.asyncio

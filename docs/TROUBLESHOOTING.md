@@ -137,8 +137,16 @@ Typical causes on `llama-32-3b-instruct` (Packmate lab):
 1. **Multi tool-calls in one assistant turn** — gateway returns 400 (`This model only supports single tool-calls at once`) on the next completion once multi-tool history is present. Fix: process **one** tool call per round and rewrite history accordingly.
 2. **Truncated final JSON** — `finish_reason=length` at the completion budget. Fix: higher final `max_tokens`, truncation retry, recover `weather_summary` from tool context when omitted.
 3. **Malformed JSON** — missing commas / prose wrappers. Fix: deterministic JSON repair in the parser, then Pydantic validation (never skip validation).
+4. **Transient final-generation flakes** — after tools succeed, the model still fails schema/parse a few times, then succeeds on an immediate retry. Packmate applies **at most one** automatic retry for classified `retryable` errors only (not 401/403, not missing LLM config, not user validation, not deterministic baggage outcomes). SSE may show `progress` with `stage=retrying_generation`. Metrics: `packmate_agent_retries_total`, `packmate_agent_retry_success_total`, `packmate_agent_retry_exhausted_total`.
 
 Do **not** disable baggage rules, MCP, or Pydantic validation, and do not return a hardcoded packing list.
+
+Check retry counters:
+
+```bash
+oc -n packmate-lab exec deploy/packmate-backend -- \
+  curl -sf http://127.0.0.1:8080/metrics | grep packmate_agent_retry
+```
 
 Reproduce without logging raw model output:
 

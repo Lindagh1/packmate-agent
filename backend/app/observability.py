@@ -49,6 +49,18 @@ INVALID_RESPONSES = Counter(
     "packmate_invalid_responses_total",
     "Total invalid agent responses",
 )
+AGENT_RETRIES = Counter(
+    "packmate_agent_retries_total",
+    "Total bounded agent retries started for transient failures",
+)
+AGENT_RETRY_SUCCESS = Counter(
+    "packmate_agent_retry_success_total",
+    "Total agent requests that succeeded after a bounded retry",
+)
+AGENT_RETRY_EXHAUSTED = Counter(
+    "packmate_agent_retry_exhausted_total",
+    "Total agent requests that exhausted the bounded retry budget",
+)
 BAGGAGE_WARNINGS = Counter(
     "packmate_baggage_warnings_total",
     "Total baggage warnings emitted",

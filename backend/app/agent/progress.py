@@ -10,6 +10,7 @@ ProgressStage = Literal[
     "weather",
     "baggage_rules",
     "generating",
+    "retrying_generation",
 ]
 
 ProgressCallback = Callable[[ProgressStage], Awaitable[None]]

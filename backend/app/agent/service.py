@@ -8,14 +8,18 @@ from pydantic import ValidationError
 from app.agent.config import LLMSettings
 from app.agent.context import ToolContext
 from app.agent.enrichment import enrich_packing_response
-from app.agent.exceptions import AgentResponseError, ParseError
+from app.agent.exceptions import AgentResponseError, LLMConfigurationError, ParseError
 from app.agent.parser import clean_model_output, extract_json_text, parse_packing_response
 from app.agent.prompts import build_system_prompt
+from app.agent.retry import MAX_RETRY_ATTEMPTS, is_retryable, retry_delay_seconds
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.agent.progress import ProgressCallback, ProgressStage
 from app.models.chat import PackingResponse
 from app.models.profile import TravelerProfile
 from app.observability import (
+    AGENT_RETRIES,
+    AGENT_RETRY_EXHAUSTED,
+    AGENT_RETRY_SUCCESS,
     BAGGAGE_WARNINGS,
     INVALID_RESPONSES,
     LLM_DURATION,
@@ -361,14 +365,124 @@ class AgentService:
         tools = self._tools_for_request(traveler_profile)
         tool_cache: dict[tuple[str, str], str] = {}
         completed_tools: set[str] = set()
-        forced_final_nudge = False
 
+        max_attempts = 1 + MAX_RETRY_ATTEMPTS
+        for attempt in range(max_attempts):
+            with span(
+                "agent.chat",
+                {"retry_attempt": attempt, "status": "started"},
+            ):
+                try:
+                    result = await self._chat_attempt(
+                        client=client,
+                        message=message,
+                        context=context,
+                        tools=tools,
+                        tool_cache=tool_cache,
+                        completed_tools=completed_tools,
+                        on_progress=on_progress,
+                        retry_attempt=attempt,
+                    )
+                    if attempt > 0:
+                        AGENT_RETRY_SUCCESS.inc()
+                    return result
+                except LLMConfigurationError:
+                    raise
+                except Exception as exc:
+                    if attempt < MAX_RETRY_ATTEMPTS and is_retryable(exc):
+                        AGENT_RETRIES.inc()
+                        await self._emit_progress(on_progress, "retrying_generation")
+                        await asyncio.sleep(retry_delay_seconds())
+                        continue
+                    if attempt > 0 and is_retryable(exc):
+                        AGENT_RETRY_EXHAUSTED.inc()
+                    raise
+
+        raise AgentResponseError("Agent retry budget exhausted.")
+
+    def _seed_messages_from_tool_cache(
+        self,
+        message: str,
+        tool_cache: dict[tuple[str, str], str],
+        completed_tools: set[str],
+    ) -> list[dict[str, Any]]:
+        """Rebuild chat history from cached tool results without re-calling MCP."""
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": build_system_prompt()},
             {"role": "user", "content": message},
         ]
+        # Prefer essential tools first, then any other cached tools.
+        ordered_names = [
+            name
+            for name in self.TOOL_PRIORITY
+            if name in completed_tools
+        ] + [
+            name
+            for name in completed_tools
+            if name not in self.TOOL_PRIORITY
+        ]
+        for name in ordered_names:
+            cached = next(
+                (
+                    (args, result)
+                    for (cached_name, args), result in tool_cache.items()
+                    if cached_name == name
+                ),
+                None,
+            )
+            if cached is None:
+                continue
+            args, result = cached
+            call_id = f"cached_{name}"
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {"name": name, "arguments": args},
+                        }
+                    ],
+                }
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": result,
+                }
+            )
+        return messages
 
-        await self._emit_progress(on_progress, "preparing")
+    async def _chat_attempt(
+        self,
+        *,
+        client: OpenAI,
+        message: str,
+        context: ToolContext,
+        tools: list[dict[str, Any]],
+        tool_cache: dict[tuple[str, str], str],
+        completed_tools: set[str],
+        on_progress: ProgressCallback | None,
+        retry_attempt: int,
+    ) -> PackingResponse:
+        forced_final_nudge = False
+        messages = self._seed_messages_from_tool_cache(
+            message,
+            tool_cache,
+            completed_tools,
+        )
+        # On a fresh attempt with no tools yet, seed is just system+user.
+        if len(messages) == 2:
+            messages = [
+                {"role": "system", "content": build_system_prompt()},
+                {"role": "user", "content": message},
+            ]
+
+        if retry_attempt == 0:
+            await self._emit_progress(on_progress, "preparing")
 
         for _ in range(self.MAX_TOOL_ROUNDS):
             essentials_ready = self.ESSENTIAL_TOOLS.issubset(completed_tools)
