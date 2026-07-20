@@ -15,3 +15,4 @@ evaluations/reports/*
 !evaluations/reports/.gitkeep
 deploy/rendered/*
 !deploy/rendered/.gitkeep
+config/sandbox.env

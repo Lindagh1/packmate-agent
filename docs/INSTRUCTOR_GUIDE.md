@@ -31,17 +31,26 @@ Details: `docs/implementation/OPENSHIFT_AI_CAPABILITIES.md`.
 
 ## Resources to prepare before the session
 
-1. Confirm model InferenceService Ready.
+1. Confirm model InferenceService Ready in `my-first-model` (do **not** redeploy for Packmate Lab).
 2. Create Data Science Project `packmate-lab` (or let Module 2 create it).
 3. Prefetch Workbench image (code-server / VS Code + Python).
 4. (Admin) Deploy MCP Routes or apply Packmate overlay when ready for live demo — **not** required for local validation.
 5. (Admin) Create `gen-ai-aa-mcp-servers` with real Route URLs ending in `/mcp`.
-6. Optional: create EvalHub + TrustyAIService from `evaluations/*/`.
-7. Do **not** commit tokens; create `packmate-llm` Secret only in-cluster when applying (instructor).
+6. Register the Packmate Lab custom model endpoint (reuses the shared predictor):
+
+   ```bash
+   bash scripts/create-packmate-model-endpoint.sh
+   bash scripts/verify-sandbox.sh
+   ```
+
+   Details: `docs/REPRODUCE_SANDBOX.md`. Enables `aiAssetCustomEndpoints` and creates
+   ConfigMap `gen-ai-aa-custom-model-endpoints` + Secret `endpoint-api-key-1` in `packmate-lab`.
+7. Optional: create EvalHub + TrustyAIService from `evaluations/*/`.
+8. Do **not** commit tokens; create `packmate-llm` Secret only in-cluster when applying (instructor).
 
 ## Model and MCP
 
-- Model: `llama-32-3b-instruct` — AI asset endpoints + in-cluster `/v1`
+- Model: `llama-32-3b-instruct` in `my-first-model`, exposed in Packmate Lab as **Packmate Llama 3.2 3B**
 - MCP: `weather-mcp`, `baggage-policy-mcp` — Streamable HTTP `/mcp`
 - Traveler profile: **not** an MCP
 

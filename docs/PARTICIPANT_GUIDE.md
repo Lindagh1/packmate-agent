@@ -103,30 +103,32 @@ The Workbench is the shared lab environment: reproducible, cluster-networked to 
 
 ### Steps
 
-1. Open **AI asset endpoints** in the OpenShift AI dashboard.  
+1. Open **Gen AI studio → AI asset endpoints** and select project **Packmate Lab**.  
    `[Screenshot: AI asset endpoints]`
-2. Find `llama-32-3b-instruct` and note the inference endpoint.
-3. In-cluster URL used by Packmate:
+2. On the **Models** tab, confirm **Packmate Llama 3.2 3B** (custom endpoint to the shared model in `my-first-model`).
+3. Also confirm MCP entries **Packmate-Weather-MCP** and **Packmate-Baggage-Policy-MCP** when the instructor has registered them.
+4. In-cluster URL used by Packmate (headless Service → pod port `8080`):
 
 ```text
 http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
 ```
 
-4. Optional Workbench smoke test (requires network to the model namespace):
+5. Optional Workbench smoke test (requires network to the model namespace):
 
 ```bash
-curl -sS "$BASE_URL/models" -H "Authorization: Bearer $LITELLM_API_KEY" | head
+curl -sS "$BASE_URL/models" | head
 ```
 
-Use instructor-provided env vars; **never commit keys**.
+Use instructor-provided env vars; **never commit keys**. Reproduction helper: `docs/REPRODUCE_SANDBOX.md` / `scripts/create-packmate-model-endpoint.sh`.
 
 ### Expected result
 
-You can name the model and its in-cluster endpoint.
+You can name the Packmate Lab model asset and its in-cluster endpoint.
 
 ### Validation
 
-- [ ] Endpoint appears Ready in AI asset endpoints or `oc get inferenceservice -n my-first-model` (read-only).
+- [ ] **Packmate Llama 3.2 3B** appears under Packmate Lab AI asset endpoints (or `oc get cm gen-ai-aa-custom-model-endpoints -n packmate-lab`).
+- [ ] Model Ready in `my-first-model`: `oc get inferenceservice -n my-first-model` (read-only).
 
 ### Troubleshooting
 
