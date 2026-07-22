@@ -1,0 +1,36 @@
+# Argo CD AppProject for Packmate Lab (manual sync intro).
+# Apply only when OpenShift GitOps Operator is installed.
+# Placeholders replaced by bootstrap: __GIT_REPO_URL__ __GIT_REVISION__ __PACKMATE_NAMESPACE__
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: packmate-lab
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+spec:
+  description: Packmate Lab — namespace-scoped GitOps intro (no wildcards, no admin)
+  sourceRepos:
+    - __GIT_REPO_URL__
+  destinations:
+    - namespace: __PACKMATE_NAMESPACE__
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: route.openshift.io
+      kind: Route
+  orphanedResources:
+    warn: true

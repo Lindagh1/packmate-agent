@@ -1,0 +1,27 @@
+# Argo CD Application for Packmate Lab — MANUAL sync for first-touch demo.
+# prune=false, selfHeal=false. No automatic destructive sync.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: packmate-lab
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: lab
+spec:
+  project: packmate-lab
+  source:
+    repoURL: __GIT_REPO_URL__
+    targetRevision: __GIT_REVISION__
+    path: deploy/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: __PACKMATE_NAMESPACE__
+  syncPolicy:
+    # Manual Sync only — participant clicks Sync in the UI.
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
+  # Explicitly omit automated.prune / automated.selfHeal for first-touch safety.
+  revisionHistoryLimit: 3
