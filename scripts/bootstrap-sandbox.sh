@@ -339,6 +339,10 @@ if [[ "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
         -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
         -e "s|__PACKMATE_NAMESPACE__|${PACKMATE_NAMESPACE}|g" \
         "${ROOT}/argocd/application-packmate-lab.yaml" | oc apply -f - >/dev/null
+    # Namespace-scoped edit for the default GitOps application controller (required to Sync).
+    oc -n "${PACKMATE_NAMESPACE}" adm policy add-role-to-user edit \
+      system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller >/dev/null 2>&1 \
+      || log "    NOTE: could not bind Argo application-controller edit role (manual instructor step)"
     log "    Argo CD resources applied"
   else
     log "    GITOPS_OPERATOR_REQUIRED — see docs/INSTALL_GITOPS_PREREQUISITE.md"

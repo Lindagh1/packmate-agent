@@ -122,7 +122,7 @@ else
 fi
 
 # Argo CD
-if oc get application packmate-lab -n openshift-gitops >/dev/null 2>&1; then
+if oc get application.argoproj.io packmate-lab -n openshift-gitops >/dev/null 2>&1; then
   pass "Argo CD Application/packmate-lab present"
 elif oc get crd applications.argoproj.io >/dev/null 2>&1; then
   info "GitOps CRD present but Application not applied"

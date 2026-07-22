@@ -87,3 +87,10 @@ podman build -t packmate-baggage-policy-mcp:dev -f mcp-servers/baggage-policy/Co
 3. Secret `packmate-llm` present
 4. Recent Argo sync / Rollout status
 5. Quality gate on last commit
+
+## Lab release validation pointers (2026-07-22)
+
+- Repro NS: `packmate-repro` (GHCR digests)
+- PipelineRun: `packmate-ci-validate-20260722-123626` Succeeded
+- Argo Application `packmate-lab` Synced/Healthy (destination `packmate-repro`)
+- Do not auto-promote Pipeline digests onto live Deployments

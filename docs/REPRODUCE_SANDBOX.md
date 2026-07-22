@@ -98,5 +98,5 @@ See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`).
 | Quality gate (in Pipeline) | score **0.9559**, scenarios **16**, threshold 0.90, **PASS** |
 | Pipeline backend digest | `sha256:d04468d34593a2d9c76f30a318ace2fcbc97e9c4d483b8271497e1dd59a2ca84` (ImageStream `packmate-backend:pipeline` in `packmate-repro` only — live Deployments not auto-promoted) |
 | OpenShift GitOps | Installed on this sandbox (`openshift-gitops-operator.v1.21.1`, channel `latest`) |
-| Argo CD Application | `packmate-lab` → destination `packmate-repro`, manual sync, prune/selfHeal off |
+| Argo CD Application | `packmate-lab` → `packmate-repro`: manual sync **Synced/Healthy**; OutOfSync demo via ConfigMap then re-Synced; controller SA granted namespace `edit` |
 | Rollouts / EvalHub | Optional / not configured |
