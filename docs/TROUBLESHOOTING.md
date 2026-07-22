@@ -14,6 +14,32 @@
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
 | Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
+## Tekton `packmate-ci` — `requirements-dev.txt` not found
+
+Symptom:
+
+```text
+ERROR: Could not open requirements file: No such file or directory: requirements-dev.txt
+```
+
+Task **clone** is green; task **test** fails.
+
+Cause:
+
+1. Backend dependencies live in **`backend/requirements-dev.txt`** (not at repo root).
+2. More often in the UI: workspace **`source`** was started as **Empty Directory**. Each task gets a fresh empty volume, so the clone is invisible to **test** / **ai-quality-gate** / **build-backend**.
+
+Fix:
+
+1. Ensure Pipeline scripts use `workingDir: $(workspaces.source.path)/backend` for pytest and the quality gate (already in `.tekton/lab/packmate-ci.yaml`).
+2. Re-start the PipelineRun with a **VolumeClaimTemplate** for workspace `source` (1Gi is enough), **or**:
+
+```bash
+oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
+```
+
+Do not delete the failed PipelineRun; create a new one. Do not copy `requirements-dev.txt` to the repository root.
+
 ## `oc: command not found`
 
 Install the official OpenShift client into `~/.local/bin` from `mirror.openshift.com`.

@@ -362,9 +362,13 @@ You do **not** write Pipeline YAML. Bootstrap already installed the namespace-sc
 4. Open Pipeline **`packmate-ci`**.
 5. Click **Start**.
 6. Keep defaults (repository URL and revision **`packmate-v2`**) unless the instructor says otherwise.
-7. Click **Start** again to create the PipelineRun.
+7. For workspace **`source`**, choose **VolumeClaimTemplate** (for example 1 Gi). Do **not** select **Empty Directory** — clone output would not be visible to later tasks.
+8. Click **Start** again to create the PipelineRun.
 
 [Screenshot required: Tekton Pipeline graph]
+
+> **Pro Tip:**
+> Instructor / CLI alternative: `oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml` (already uses a shared PVC).
 
 ### 9.2. Read the AI quality gate
 
@@ -392,6 +396,8 @@ The script shows a diff, asks confirmation, and **never** pushes automatically.
 > The Pipeline builds **only the backend**. It does not rebuild the four lab images and must not silently replace the live Deployment unless you promote on purpose.
 
 **Common error:** Pipelines Operator missing — follow instructor screenshots; the OpenShift AI path remains valid.
+
+**Common error:** `Could not open requirements file: requirements-dev.txt` on task **test** while **clone** succeeded — the PipelineRun used **Empty Directory** for workspace `source`. Re-start with a **VolumeClaimTemplate** (see `docs/TROUBLESHOOTING.md`).
 
 ---
 

@@ -1,0 +1,36 @@
+# Create a new Packmate CI PipelineRun with a shared PVC workspace.
+# Do NOT use Empty Directory — later tasks would not see the clone output.
+#
+#   oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
+#
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: packmate-ci-
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: lab-pipeline
+spec:
+  pipelineRef:
+    name: packmate-ci
+  taskRunTemplate:
+    serviceAccountName: packmate-pipeline
+  params:
+    - name: git-url
+      value: https://github.com/Lindagh1/packmate-agent.git
+    - name: git-revision
+      value: packmate-v2
+    - name: quality-threshold
+      value: "0.90"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: packmate
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
