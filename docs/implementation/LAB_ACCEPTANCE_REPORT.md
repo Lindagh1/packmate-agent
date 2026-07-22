@@ -164,7 +164,7 @@ Anonymous `skopeo inspect` on all four: **OK**.
 
 - EvalHub not configured (`EVALHUB_OPTIONAL_NOT_CONFIGURED`)  
 - Rollouts optional annex  
-- Custom model endpoint remains ClickOps (`CREATE_MODEL_CUSTOM_ENDPOINT=false`)  
+- Custom model endpoint is **automated** by bootstrap (`CREATE_MODEL_CUSTOM_ENDPOINT=true`); participants never Create endpoint
 - Shared Application name `packmate-lab` retargets destination when bootstrapping another namespace (instructor should use one GitOps destination per class cluster)
 
 ---

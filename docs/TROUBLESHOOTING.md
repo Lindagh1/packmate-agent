@@ -6,9 +6,13 @@
 |---------|--------|
 | `MANUAL STEP REQUIRED: Create the Data Science Project` | Create DSP in OpenShift AI UI first (`ALLOW_CREATE_NAMESPACE` is false by default) |
 | `BLOCKED` model not Ready | Instructor checks `my-first-model` — do not redeploy from the lab |
+| Custom endpoint create/verify failed | Re-run `make bootstrap`; confirm `aiAssetCustomEndpoints=true` and shared Service reachable — do **not** ask participants to Create endpoint |
+| Playground missing Packmate Llama / MCP | Hard-refresh Gen AI studio; `make verify` must PASS asset checks |
+| Health check timed out after 180s | Inspect Route/deploy; bootstrap retries every 5s and accepts only HTTP 200 |
 | Image empty / unreachable | Instructor must publish GHCR/Quay digests into `config/sandbox.env` |
 | `GITOPS_OPERATOR_REQUIRED` | Module 10 screenshot-only — see `docs/INSTALL_GITOPS_PREREQUISITE.md` |
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
+| Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
 ## `oc: command not found`
 

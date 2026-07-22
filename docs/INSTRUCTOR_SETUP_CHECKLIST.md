@@ -28,7 +28,7 @@ Use before each Packmate v2 session.
 
 - [ ] `config/sandbox.env` template with image digests (distributed out-of-band)
 - [ ] `LITELLM_API_KEY=dummy` (or lab token policy documented)
-- [ ] `CREATE_MODEL_CUSTOM_ENDPOINT=false` (ClickOps Mode B)
+- [ ] `ENABLE_CUSTOM_ENDPOINTS=true` and `CREATE_MODEL_CUSTOM_ENDPOINT=true` (official lab)
 - [ ] `ALLOW_CREATE_NAMESPACE=false`
 
 ## Smoke on instructor project
@@ -36,7 +36,7 @@ Use before each Packmate v2 session.
 - [ ] `make preflight` → no BLOCKED
 - [ ] `SKIP_CONFIRM=true make bootstrap`
 - [ ] `make verify` → OK
-- [ ] Playground Mode A works with `playground/system-instructions.md`
+- [ ] Playground in `packmate-lab` shows Packmate Llama 3.2 3B + both MCP after bootstrap
 - [ ] Both MCP tools authorize
 - [ ] Frontend Route serves UI
 - [ ] Pipeline `packmate-ci` visible (if Pipelines present)

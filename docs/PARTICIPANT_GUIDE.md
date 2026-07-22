@@ -19,7 +19,7 @@ It separates discovery, prototyping, runtime, and delivery into clear layers:
    You create a **Data Science Project** and a **code-server Workbench**. You explore **AI asset endpoints**, prototype in the **Gen AI Playground**, then compare the export with the FastAPI service.
 
 3. **The lab bootstrap (prebuilt images)**
-   Automation (`make bootstrap`) deploys Weather MCP, Baggage MCP, backend, and frontend from **digest-pinned** images (GHCR/Quay). You do **not** build four images at the start of the lab and you do **not** redeploy the shared Llama model in `my-first-model`.
+   Automation (`make bootstrap`) deploys Weather MCP, Baggage MCP, backend, and frontend from **digest-pinned** images (GHCR/Quay). It also registers the MCP servers and creates the **Packmate custom model endpoint** in your project so the Playground in `packmate-lab` already sees the three AI assets. You do **not** build four images at the start of the lab and you do **not** redeploy the shared Llama model in `my-first-model`.
 
 4. **Secondary ClickOps (Pipelines + Argo CD)**
    You start Pipeline `packmate-ci` from the UI (tests + AI quality gate + backend build only). If OpenShift GitOps is available, you observe **OutOfSync → Sync → Healthy** in Argo CD.
@@ -209,28 +209,25 @@ Confirm the bootstrap prompt with **`y`** when asked (unless the instructor alre
 ## 🔌 5. Explore AI asset endpoints
 
 **Duration:** 10 minutes
-**Objective:** Locate the shared model and the Packmate MCP servers.
+**Objective:** Confirm that bootstrap prepared the three Packmate AI assets in your lab project.
 
-The physical model stays in **`my-first-model`**. You do not deploy a second Llama instance.
+The physical model stays in **`my-first-model`**. You do not deploy a second Llama instance and you do **not** create an endpoint manually. `make bootstrap` registers:
 
-### 5.1. Mode A — simplest (recommended)
+- **Packmate Llama 3.2 3B** (custom endpoint in `packmate-lab` pointing at the shared predictor)
+- **Packmate-Weather-MCP**
+- **Packmate-Baggage-Policy-MCP**
 
-1. Open **Gen AI studio** → **AI asset endpoints**.
-2. Select project **`my-first-model`**.
-3. Confirm model **`llama-32-3b-instruct`**.
-
-[Screenshot required: AI asset endpoints]
-
-### 5.2. Mode B — single project experience (optional)
+### 5.1. Open AI asset endpoints
 
 1. Open **Gen AI studio** → **AI asset endpoints**.
 2. Select project **Packmate Lab** / **`packmate-lab`**.
-3. If needed, click **Models** → **Create endpoint**.
-4. Fill the values printed by bootstrap under **MANUAL STEP REQUIRED — Create model endpoint** (URL, Model ID, display name). Leave token blank if predictor auth is disabled.
+3. Confirm the three assets above are listed (refresh the dashboard if an asset is missing just after bootstrap).
 
-**Expected result:** You can open a Playground session that sees the model and, after bootstrap, the Packmate MCP entries.
+[Screenshot required: AI asset endpoints in packmate-lab]
 
-**Common error:** Searching only in `packmate-lab` while Mode A keeps the model in `my-first-model`.
+**Expected result:** All three assets are visible in `packmate-lab` without any Create endpoint ClickOps.
+
+**Common error:** Assets missing after bootstrap — hard-refresh Gen AI studio, then re-run `make verify`. Do not create a second model in `packmate-lab`.
 
 ---
 
@@ -251,14 +248,15 @@ The source of truth for the prompt is:
 ### 6.2. Configure the Playground
 
 1. Open **Gen AI studio** → **Playground**.
-2. Select the project (`my-first-model` or `packmate-lab`).
-3. Open **Configure** → **Prompt**.
-4. Paste into **System instructions**.
+2. Select project **Packmate Lab** / **`packmate-lab`**.
+3. Select model **Packmate Llama 3.2 3B**.
+4. Open **Configure** → **Prompt**.
+5. Paste into **System instructions**.
 
 [Screenshot required: System instructions]
 
-5. Start a **New chat**.
-6. Enable / authorize **Packmate-Weather-MCP** and **Packmate-Baggage-Policy-MCP**.
+6. Start a **New chat**.
+7. Enable / authorize **Packmate-Weather-MCP** and **Packmate-Baggage-Policy-MCP**.
 
 [Screenshot required: Playground with model and MCP servers]
 
@@ -480,7 +478,7 @@ Place each capture immediately after the matching step in your notes or Word exp
 |-----------|--------------------|
 | Argo Rollouts canary | Optional annex — not required |
 | EvalHub evaluation | Optional — `EVALHUB_OPTIONAL_NOT_CONFIGURED` if no instance |
-| Custom model endpoint CLI | Optional instructor flag `CREATE_MODEL_CUSTOM_ENDPOINT=true` |
+| Custom model endpoint | Created automatically by `make bootstrap` (`CREATE_MODEL_CUSTOM_ENDPOINT=true`) |
 | Historical Streamlit / S2I path | Retired — not part of Packmate v2 |
 
 See also: `docs/ARCHITECTURE.md`, `docs/REPRODUCE_SANDBOX.md`, `docs/INSTRUCTOR_GUIDE.md`, `docs/DOCX_ASSEMBLY_PLAN.md`.

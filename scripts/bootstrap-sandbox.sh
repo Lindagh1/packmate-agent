@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Packmate sandbox bootstrap — idempotent deploy of lab workloads from prebuilt images.
 # Does NOT redeploy the shared model in MODEL_NAMESPACE. Does NOT install Operators.
+# Creates the Packmate custom model endpoint automatically (CREATE_MODEL_CUSTOM_ENDPOINT=true).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,6 +14,77 @@ packmate_load_config "${ROOT}" || exit 1
 log() { packmate_log "$*"; }
 die() { packmate_die "$*"; }
 
+HEALTH_RETRY_SECS=5
+HEALTH_MAX_SECS=180
+
+wait_http_200() {
+  # Args: url label [extra curl args...]
+  local url="$1" label="$2"
+  shift 2 || true
+  local deadline=$((SECONDS + HEALTH_MAX_SECS))
+  local code=000
+  local last_diag=""
+  while (( SECONDS < deadline )); do
+    code="$(curl -sk -o /dev/null -w '%{http_code}' -m 20 "$@" "${url}" 2>/dev/null || echo 000)"
+    if [[ "${code}" == "200" ]]; then
+      log "    OK ${label} (HTTP ${code})"
+      return 0
+    fi
+    last_diag="HTTP ${code}"
+    # 503 and other transient codes: retry until deadline
+    sleep "${HEALTH_RETRY_SECS}"
+  done
+  die "${label} health failed after ${HEALTH_MAX_SECS}s (last ${last_diag}) url=${url}"
+}
+
+wait_backend_pod_health() {
+  local deadline=$((SECONDS + HEALTH_MAX_SECS))
+  local last=""
+  while (( SECONDS < deadline )); do
+    if oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
+          curl -sf -m 15 http://127.0.0.1:8080/health >/dev/null 2>&1 \
+      && oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
+          curl -sf -m 15 http://127.0.0.1:8080/ready >/dev/null 2>&1 \
+      && oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
+          curl -sf -m 15 http://127.0.0.1:8080/metrics >/dev/null 2>&1; then
+      log "    OK backend /health /ready /metrics via pod"
+      return 0
+    fi
+    last="pod exec probe failed"
+    sleep "${HEALTH_RETRY_SECS}"
+  done
+  oc -n "${PACKMATE_NAMESPACE}" get deploy,pods -l app.kubernetes.io/part-of=packmate 2>&1 | head -40 >&2 || true
+  die "backend health/ready/metrics failed after ${HEALTH_MAX_SECS}s (${last})"
+}
+
+apply_named_deploys() {
+  # Apply/update only the named Deployments from deploys.yaml
+  local names_csv="$1"
+  python3 - <<'PY' "${TMP}/deploys.yaml" "${PACKMATE_NAMESPACE}" "${names_csv}"
+import subprocess, sys, yaml
+path, ns, names_csv = sys.argv[1:4]
+want = {n.strip() for n in names_csv.split(",") if n.strip()}
+docs = [d for d in yaml.safe_load_all(open(path)) if d and d.get("metadata", {}).get("name") in want]
+for doc in docs:
+  name = doc["metadata"]["name"]
+  containers = doc["spec"]["template"]["spec"]["containers"]
+  exists = subprocess.run(["oc", "-n", ns, "get", "deploy", name], capture_output=True).returncode == 0
+  if not exists:
+    subprocess.run(["oc", "apply", "-f", "-"], input=yaml.safe_dump(doc).encode(), check=True)
+    print(f"    created deploy/{name}")
+    continue
+  for c in containers:
+    subprocess.run(["oc", "-n", ns, "set", "image", f"deploy/{name}", f"{c['name']}={c['image']}"], check=True)
+    print(f"    set image deploy/{name} {c['name']}")
+PY
+}
+
+wait_deploy() {
+  local name="$1"
+  log "    waiting for deploy/${name}"
+  oc -n "${PACKMATE_NAMESPACE}" rollout status "deploy/${name}" --timeout=300s
+}
+
 log "=== Packmate bootstrap ==="
 log "user=$(oc whoami)"
 log "context=$(oc config current-context)"
@@ -23,7 +95,7 @@ log "  backend=${BACKEND_IMAGE:-<overlay default>}"
 log "  frontend=${FRONTEND_IMAGE:-<overlay default>}"
 log "  weather=${WEATHER_MCP_IMAGE:-<overlay default>}"
 log "  baggage=${BAGGAGE_POLICY_MCP_IMAGE:-<overlay default>}"
-log "flags: REGISTER_MCP=${REGISTER_MCP} CREATE_PIPELINE=${CREATE_PIPELINE} CREATE_ARGOCD=${CREATE_ARGOCD_APPLICATION} CREATE_MODEL_ENDPOINT=${CREATE_MODEL_CUSTOM_ENDPOINT}"
+log "flags: REGISTER_MCP=${REGISTER_MCP} ENABLE_CUSTOM_ENDPOINTS=${ENABLE_CUSTOM_ENDPOINTS:-true} CREATE_MODEL_ENDPOINT=${CREATE_MODEL_CUSTOM_ENDPOINT} CREATE_PIPELINE=${CREATE_PIPELINE} CREATE_ARGOCD=${CREATE_ARGOCD_APPLICATION}"
 
 if [[ "${SKIP_CONFIRM}" != "true" ]]; then
   read -r -p "Continue with bootstrap in ${PACKMATE_NAMESPACE}? [y/N] " ans
@@ -35,7 +107,6 @@ if ! oc get project "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
   if [[ "${ALLOW_CREATE_NAMESPACE}" == "true" ]]; then
     log "ALLOW_CREATE_NAMESPACE=true — creating project ${PACKMATE_NAMESPACE}"
     oc new-project "${PACKMATE_NAMESPACE}" --display-name="Packmate Lab" >/dev/null
-    # DSP-compatible labels so the project is discoverable in OpenShift AI
     oc label namespace "${PACKMATE_NAMESPACE}" \
       opendatahub.io/dashboard=true \
       modelmesh-enabled=false \
@@ -52,9 +123,16 @@ EOF
   fi
 fi
 
-# Model must already exist
+# 2) Enable custom endpoints feature
+log "==> Enabling custom model endpoints feature"
+bash "${ROOT}/scripts/enable-custom-model-endpoints.sh"
+
+# 3) Discover and require shared model (no redeploy)
 READY="$(oc get inferenceservice "${MODEL_ID}" -n "${MODEL_NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
 [[ "${READY}" == "True" ]] || die "Model ${MODEL_ID} not Ready in ${MODEL_NAMESPACE}"
+if oc -n "${PACKMATE_NAMESPACE}" get inferenceservice "${MODEL_ID}" >/dev/null 2>&1; then
+  die "InferenceService ${MODEL_ID} must not exist in ${PACKMATE_NAMESPACE}"
+fi
 packmate_discover_model_url || die "Cannot discover model Service URL"
 log "model_url=${PACKMATE_MODEL_BASE_URL}"
 
@@ -68,12 +146,11 @@ oc -n "${PACKMATE_NAMESPACE}" create secret generic packmate-llm \
 log "    Secret/packmate-llm applied (values not shown)"
 
 # Render overlay with optional image overrides
-log "==> Applying deploy/overlays/dev (idempotent)"
+log "==> Rendering deploy/overlays/dev"
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 oc kustomize "${ROOT}/deploy/overlays/dev" > "${TMP}/all.yaml"
 
-# Retarget overlay namespace (dev defaults to packmate-lab) without touching packmate-lab live.
 python3 - <<'PY' "${TMP}/all.yaml" "${PACKMATE_NAMESPACE}"
 import sys
 from pathlib import Path
@@ -96,7 +173,6 @@ for d in docs:
 Path(sys.argv[1]).write_text(yaml.safe_dump_all(out, sort_keys=False))
 PY
 
-# Optional image overrides from sandbox.env (digest-pinned) — YAML-aware
 python3 - <<'PY' "${TMP}/all.yaml" \
   "${BACKEND_IMAGE:-}" "${FRONTEND_IMAGE:-}" "${WEATHER_MCP_IMAGE:-}" "${BAGGAGE_POLICY_MCP_IMAGE:-}"
 import sys
@@ -107,7 +183,6 @@ except ImportError:
   raise SystemExit(0)
 path = Path(sys.argv[1])
 be, fe, wx, bg = sys.argv[2:6]
-# Map deployment name -> desired image
 want = {}
 if be:
   want["packmate-backend"] = be
@@ -134,119 +209,52 @@ for d in docs:
 path.write_text(yaml.safe_dump_all(out, sort_keys=False))
 PY
 
-# Split: apply non-Deployment first, then create-or-set-image Deployments
-# (existing lab Deployments may have immutable selectors that differ from base).
 python3 - <<'PY' "${TMP}/all.yaml" "${TMP}"
 import sys
 from pathlib import Path
 try:
   import yaml
 except ImportError:
-  # Fallback: write whole file for non-deploy path only
-  Path(sys.argv[2], 'nondeploy.yaml').write_text(Path(sys.argv[1]).read_text())
-  Path(sys.argv[2], 'deploys.yaml').write_text('')
+  Path(sys.argv[2], "nondeploy.yaml").write_text(Path(sys.argv[1]).read_text())
+  Path(sys.argv[2], "deploys.yaml").write_text("")
   raise SystemExit(0)
 docs = list(yaml.safe_load_all(Path(sys.argv[1]).read_text()))
 non, deps = [], []
 for d in docs:
   if not d:
     continue
-  if d.get('kind') == 'Deployment':
+  if d.get("kind") == "Deployment":
     deps.append(d)
   else:
     non.append(d)
-Path(sys.argv[2], 'nondeploy.yaml').write_text(yaml.safe_dump_all(non, sort_keys=False))
-Path(sys.argv[2], 'deploys.yaml').write_text(yaml.safe_dump_all(deps, sort_keys=False))
+Path(sys.argv[2], "nondeploy.yaml").write_text(yaml.safe_dump_all(non, sort_keys=False))
+Path(sys.argv[2], "deploys.yaml").write_text(yaml.safe_dump_all(deps, sort_keys=False))
 PY
 
 oc apply -f "${TMP}/nondeploy.yaml" >/dev/null
 
-# Deployments: create if missing; otherwise only update container images (preserve selectors).
+# 4–5) Deploy Weather + Baggage MCP first
+log "==> Deploying Weather MCP and Baggage Policy MCP"
 if [[ -s "${TMP}/deploys.yaml" ]]; then
-  python3 - <<'PY' "${TMP}/deploys.yaml" "${PACKMATE_NAMESPACE}"
-import json, subprocess, sys, yaml
-ns = sys.argv[2]
-for doc in yaml.safe_load_all(open(sys.argv[1])):
-  if not doc:
-    continue
-  name = doc['metadata']['name']
-  containers = doc['spec']['template']['spec']['containers']
-  exists = subprocess.run(['oc','-n',ns,'get','deploy',name], capture_output=True).returncode == 0
-  if not exists:
-    subprocess.run(['oc','apply','-f','-'], input=yaml.safe_dump(doc).encode(), check=True)
-    print(f'    created deploy/{name}')
-    continue
-  for c in containers:
-    img = c['image']
-    cname = c['name']
-    subprocess.run(['oc','-n',ns,'set','image',f'deploy/{name}',f'{cname}={img}'], check=True)
-    print(f'    set image deploy/{name} {cname}')
-PY
+  apply_named_deploys "weather-mcp,baggage-policy-mcp"
 else
-  # No PyYAML: fall back to oc apply and tolerate selector errors for existing deps
-  oc apply -f "${TMP}/all.yaml" >/dev/null 2>"${TMP}/apply.err" || true
-  if grep -q 'field is immutable' "${TMP}/apply.err" 2>/dev/null; then
-    log "    NOTE: some Deployment selectors immutable — images left as currently running"
-  elif [[ -s "${TMP}/apply.err" ]]; then
-    cat "${TMP}/apply.err" >&2
-    die "oc apply failed"
-  fi
+  die "rendered deploys.yaml empty — cannot deploy MCP"
 fi
-log "    manifests applied"
-
-wait_deploy() {
-  local name="$1"
-  log "    waiting for deploy/${name}"
-  oc -n "${PACKMATE_NAMESPACE}" rollout status "deploy/${name}" --timeout=300s
-}
-
 wait_deploy weather-mcp
 wait_deploy baggage-policy-mcp
-wait_deploy packmate-backend
-wait_deploy packmate-frontend
 
-# Health checks: prefer Route (NetworkPolicies may block arbitrary probe pods → ClusterIP)
-log "==> Health checks"
-check_route_health() {
-  local route="$1" label="$2"
-  local host code
-  host="$(oc -n "${PACKMATE_NAMESPACE}" get route "${route}" -o jsonpath='{.spec.host}' 2>/dev/null || true)"
-  [[ -n "${host}" ]] || die "Route ${route} missing"
-  code="$(curl -sk -o /dev/null -w '%{http_code}' -m 30 "https://${host}/health" || echo 000)"
-  [[ "${code}" == "200" ]] || die "${label} returned HTTP ${code} for https://${host}/health"
-  log "    OK ${label} (${code})"
-}
+# 6) MCP health checks (retry 5s, max 180s, success only on HTTP 200)
+log "==> MCP health checks"
+W_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route weather-mcp -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+B_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route baggage-policy-mcp -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+[[ -n "${W_HOST}" ]] || die "Route weather-mcp missing"
+[[ -n "${B_HOST}" ]] || die "Route baggage-policy-mcp missing"
+wait_http_200 "https://${W_HOST}/health" "weather /health"
+wait_http_200 "https://${B_HOST}/health" "baggage /health"
 
-check_route_health weather-mcp "weather /health"
-check_route_health baggage-policy-mcp "baggage /health"
-
-if oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
-    curl -sf -m 20 http://127.0.0.1:8080/health >/dev/null \
- && oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
-    curl -sf -m 20 http://127.0.0.1:8080/ready >/dev/null \
- && oc -n "${PACKMATE_NAMESPACE}" exec deploy/packmate-backend -- \
-    curl -sf -m 20 http://127.0.0.1:8080/metrics >/dev/null; then
-  log "    OK backend /health /ready /metrics via pod"
-else
-  die "backend health/ready/metrics failed via pod exec"
-fi
-
-ROUTE_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route packmate-frontend -o jsonpath='{.spec.host}' 2>/dev/null || true)"
-if [[ -n "${ROUTE_HOST}" ]]; then
-  code="$(curl -sk -o /dev/null -w '%{http_code}' -m 30 "https://${ROUTE_HOST}/" || echo 000)"
-  [[ "${code}" == "200" ]] || die "Frontend Route returned HTTP ${code}"
-  log "    OK Route https://${ROUTE_HOST}/ (${code})"
-  export PACKMATE_API="https://${ROUTE_HOST}"
-  bash "${ROOT}/scripts/test-streaming-smoke.sh" || die "SSE smoke failed"
-else
-  die "Route packmate-frontend missing"
-fi
-
-# MCP registration (preserve existing keys)
+# 7) Register MCP
 if [[ "${REGISTER_MCP}" == "true" ]]; then
   log "==> Registering MCP servers in ${ODH_APPLICATIONS_NS}"
-  W_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route weather-mcp -o jsonpath='{.spec.host}')"
-  B_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route baggage-policy-mcp -o jsonpath='{.spec.host}')"
   python3 - <<PY
 import json, subprocess, tempfile, os
 ns = "${ODH_APPLICATIONS_NS}"
@@ -280,12 +288,47 @@ print("    MCP ConfigMap applied (existing keys preserved)")
 PY
 fi
 
-# Pipelines
+# 8) Create custom model endpoint (fail hard when flag true)
+log "==> Creating Packmate custom model endpoint"
+CREATE_MODEL_CUSTOM_ENDPOINT="${CREATE_MODEL_CUSTOM_ENDPOINT}" \
+  bash "${ROOT}/scripts/create-packmate-model-endpoint.sh" \
+  || die "custom model endpoint creation/verification failed"
+if [[ "${CREATE_MODEL_CUSTOM_ENDPOINT}" == "true" ]]; then
+  oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints >/dev/null \
+    || die "ConfigMap gen-ai-aa-custom-model-endpoints missing after create"
+fi
+
+# 9) Verify model + MCP assets ready for packmate-lab Playground
+log "==> Verifying AI assets for ${PACKMATE_NAMESPACE} Playground"
+oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" -o json \
+  | grep -q Packmate-Weather-MCP || die "Weather MCP not registered"
+oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" -o json \
+  | grep -q Packmate-Baggage-Policy-MCP || die "Baggage MCP not registered"
+if [[ "${CREATE_MODEL_CUSTOM_ENDPOINT}" == "true" ]]; then
+  oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints -o jsonpath='{.data.config\.yaml}' \
+    | grep -q "${MODEL_ID}" || die "Packmate custom model endpoint missing ${MODEL_ID}"
+  oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints -o jsonpath='{.data.config\.yaml}' \
+    | grep -q "Packmate Llama" || die "Packmate display name missing from custom endpoint"
+fi
+log "    model + MCP assets ready for Playground (refresh Gen AI studio if needed)"
+
+# 10) Deploy backend + frontend
+log "==> Deploying backend and frontend"
+apply_named_deploys "packmate-backend,packmate-frontend"
+wait_deploy packmate-backend
+wait_deploy packmate-frontend
+
+log "==> Backend / frontend health checks"
+wait_backend_pod_health
+ROUTE_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route packmate-frontend -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+[[ -n "${ROUTE_HOST}" ]] || die "Route packmate-frontend missing"
+wait_http_200 "https://${ROUTE_HOST}/" "frontend /"
+
+# 11) Pipeline + Argo CD
 if [[ "${CREATE_PIPELINE}" == "true" ]]; then
   if packmate_api_has '^pipelines[[:space:]].*tekton\.dev'; then
     log "==> Applying lab Pipeline packmate-ci"
     oc apply -n "${PACKMATE_NAMESPACE}" -f "${ROOT}/.tekton/lab/packmate-ci.yaml" >/dev/null
-    # Ensure BuildConfig + ImageStream exist for the build-backend task (namespace-scoped).
     if ! oc -n "${PACKMATE_NAMESPACE}" get bc packmate-backend >/dev/null 2>&1; then
       oc -n "${PACKMATE_NAMESPACE}" apply -f - <<EOF
 apiVersion: image.openshift.io/v1
@@ -326,11 +369,9 @@ EOF
   fi
 fi
 
-# Argo CD
 if [[ "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
   if oc get crd applications.argoproj.io >/dev/null 2>&1; then
     log "==> Applying Argo CD AppProject + Application (manual sync)"
-    # Render placeholders
     sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
         -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
         -e "s|__PACKMATE_NAMESPACE__|${PACKMATE_NAMESPACE}|g" \
@@ -339,7 +380,6 @@ if [[ "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
         -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
         -e "s|__PACKMATE_NAMESPACE__|${PACKMATE_NAMESPACE}|g" \
         "${ROOT}/argocd/application-packmate-lab.yaml" | oc apply -f - >/dev/null
-    # Namespace-scoped edit for the default GitOps application controller (required to Sync).
     oc -n "${PACKMATE_NAMESPACE}" adm policy add-role-to-user edit \
       system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller >/dev/null 2>&1 \
       || log "    NOTE: could not bind Argo application-controller edit role (manual instructor step)"
@@ -350,19 +390,24 @@ if [[ "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
   fi
 fi
 
-# Model custom endpoint — ClickOps by default
-log "==> Model endpoint helper"
-CREATE_MODEL_CUSTOM_ENDPOINT="${CREATE_MODEL_CUSTOM_ENDPOINT}" \
-  bash "${ROOT}/scripts/create-packmate-model-endpoint.sh"
+# 12) SSE smoke
+log "==> SSE smoke test"
+export PACKMATE_API="https://${ROUTE_HOST}"
+bash "${ROOT}/scripts/test-streaming-smoke.sh" || die "SSE smoke failed"
 
 cat <<EOF
 
 === Bootstrap complete ===
 Route: https://${ROUTE_HOST}/
 
+AI assets prepared for project Packmate Lab (${PACKMATE_NAMESPACE}):
+  - Packmate Llama 3.2 3B (custom endpoint → shared model in ${MODEL_NAMESPACE})
+  - Packmate-Weather-MCP
+  - Packmate-Baggage-Policy-MCP
+
 Remaining UI steps:
-1. Gen AI studio → AI asset endpoints → Project: Packmate Lab (and/or my-first-model)
-2. Playground → paste playground/system-instructions.md → enable MCP → test prompts
+1. Gen AI studio → Playground → Project: Packmate Lab
+2. Select Packmate Llama 3.2 3B → enable both MCP → paste playground/system-instructions.md
 3. Pipelines → packmate-ci → Start
 4. Argo CD → packmate-lab → Sync (if GitOps installed)
 

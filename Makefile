@@ -8,8 +8,8 @@ SHELL := /bin/bash
 help:
 	@echo "Packmate lab targets:"
 	@echo "  make preflight   Cluster and image checks"
-	@echo "  make bootstrap   Deploy Packmate workloads (idempotent)"
-	@echo "  make verify      Non-destructive readiness checks"
+	@echo "  make bootstrap   Deploy Packmate workloads + AI assets (idempotent)"
+	@echo "  make verify      Non-destructive readiness checks (incl. custom endpoint)"
 	@echo "  make cleanup     Interactive packmate-lab cleanup"
 	@echo "  make test        Backend + frontend + MCP unit tests + quality gate"
 	@echo "  make render      Render Kustomize overlays"

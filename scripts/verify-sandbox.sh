@@ -17,6 +17,8 @@ else
   MODEL_SERVICE="${MODEL_SERVICE:-llama-32-3b-instruct-predictor}"
   MODEL_ID="${MODEL_ID:-llama-32-3b-instruct}"
   ODH_APPLICATIONS_NS="${ODH_APPLICATIONS_NS:-redhat-ods-applications}"
+  ENABLE_CUSTOM_ENDPOINTS="${ENABLE_CUSTOM_ENDPOINTS:-true}"
+  CREATE_MODEL_CUSTOM_ENDPOINT="${CREATE_MODEL_CUSTOM_ENDPOINT:-true}"
 fi
 
 FAILS=0
@@ -79,13 +81,85 @@ for r in weather-mcp baggage-policy-mcp; do
   fi
 done
 
+# Custom endpoints feature + shared model + Packmate custom endpoint
+CREATE_MODEL_CUSTOM_ENDPOINT="${CREATE_MODEL_CUSTOM_ENDPOINT:-true}"
+ENABLE_CUSTOM_ENDPOINTS="${ENABLE_CUSTOM_ENDPOINTS:-true}"
+FEAT="$(oc get odhdashboardconfig odh-dashboard-config -n "${ODH_APPLICATIONS_NS}" \
+  -o jsonpath='{.spec.dashboardConfig.aiAssetCustomEndpoints}' 2>/dev/null || true)"
+if [[ "${ENABLE_CUSTOM_ENDPOINTS}" == "true" || "${CREATE_MODEL_CUSTOM_ENDPOINT}" == "true" ]]; then
+  [[ "${FEAT}" == "true" ]] && pass "Custom endpoints feature enabled" || fail "Custom endpoints feature not enabled"
+else
+  info "Custom endpoints feature check skipped (flags false)"
+fi
+
+if packmate_discover_model_url 2>/dev/null; then
+  POD="packmate-verify-model-$$"
+  oc -n "${PACKMATE_NAMESPACE}" delete pod "${POD}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  if oc -n "${PACKMATE_NAMESPACE}" run "${POD}" --image=registry.access.redhat.com/ubi9/ubi-minimal:9.4 \
+      --restart=Never --quiet \
+      --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"probe","image":"registry.access.redhat.com/ubi9/ubi-minimal:9.4","command":["sleep","60"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"runAsNonRoot":true}}]}}' \
+      --command -- sleep 60 >/dev/null 2>&1 \
+    && oc -n "${PACKMATE_NAMESPACE}" wait --for=condition=Ready "pod/${POD}" --timeout=90s >/dev/null 2>&1; then
+    code="$(oc -n "${PACKMATE_NAMESPACE}" exec "${POD}" -- \
+      curl -sS -o /dev/null -w '%{http_code}' -m 25 "${PACKMATE_MODEL_BASE_URL}/models" 2>/dev/null || echo 000)"
+    [[ "${code}" == "200" ]] && pass "Shared model service reachable" || fail "Shared model service HTTP ${code}"
+  else
+    fail "Shared model service reachable (probe pod failed)"
+  fi
+  oc -n "${PACKMATE_NAMESPACE}" delete pod "${POD}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+else
+  fail "Shared model service reachable (discovery failed)"
+fi
+
+if [[ "${CREATE_MODEL_CUSTOM_ENDPOINT}" == "true" ]]; then
+  if oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints >/dev/null 2>&1; then
+    cm_yaml="$(oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints -o jsonpath='{.data.config\.yaml}' 2>/dev/null || true)"
+    if printf '%s' "${cm_yaml}" | grep -q "${MODEL_ID}" \
+      && printf '%s' "${cm_yaml}" | grep -q "Packmate Llama"; then
+      pass "Packmate custom model endpoint created"
+    else
+      fail "Packmate custom model endpoint created (ConfigMap incomplete)"
+    fi
+    # Secret referenced by config (never dump values)
+    sec_name="$(printf '%s' "${cm_yaml}" | sed -n 's/.*name:[[:space:]]*\(endpoint-api-key-[0-9][0-9]*\).*/\1/p' | head -1)"
+    if [[ -n "${sec_name}" ]] && oc -n "${PACKMATE_NAMESPACE}" get secret "${sec_name}" >/dev/null 2>&1; then
+      pass "Packmate custom model endpoint verified"
+    else
+      fail "Packmate custom model endpoint verified (Secret missing)"
+    fi
+  else
+    fail "Packmate custom model endpoint created"
+    fail "Packmate custom model endpoint verified"
+  fi
+  # No second InferenceService / GPU copy in lab NS
+  if oc -n "${PACKMATE_NAMESPACE}" get inferenceservice 2>/dev/null | grep -qi llama; then
+    fail "No Llama InferenceService in ${PACKMATE_NAMESPACE}"
+  else
+    pass "No Llama InferenceService in ${PACKMATE_NAMESPACE}"
+  fi
+else
+  info "Custom model endpoint checks skipped (CREATE_MODEL_CUSTOM_ENDPOINT=false)"
+fi
+
 # MCP ConfigMap
 if oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" >/dev/null 2>&1; then
   data="$(oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" -o json)"
-  printf '%s' "${data}" | grep -q Packmate-Weather-MCP && pass "MCP Packmate-Weather-MCP registered" || fail "Weather MCP not registered"
-  printf '%s' "${data}" | grep -q Packmate-Baggage-Policy-MCP && pass "MCP Packmate-Baggage-Policy-MCP registered" || fail "Baggage MCP not registered"
+  printf '%s' "${data}" | grep -q Packmate-Weather-MCP && pass "Weather MCP registered" || fail "Weather MCP not registered"
+  printf '%s' "${data}" | grep -q Packmate-Baggage-Policy-MCP && pass "Baggage MCP registered" || fail "Baggage MCP not registered"
 else
-  fail "gen-ai-aa-mcp-servers ConfigMap missing"
+  fail "Weather MCP registered (ConfigMap missing)"
+  fail "Baggage MCP registered (ConfigMap missing)"
+fi
+
+# Combined Playground readiness
+if [[ "${CREATE_MODEL_CUSTOM_ENDPOINT}" == "true" ]]; then
+  if oc -n "${PACKMATE_NAMESPACE}" get cm gen-ai-aa-custom-model-endpoints >/dev/null 2>&1 \
+    && oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" -o json 2>/dev/null | grep -q Packmate-Weather-MCP \
+    && oc get cm gen-ai-aa-mcp-servers -n "${ODH_APPLICATIONS_NS}" -o json 2>/dev/null | grep -q Packmate-Baggage-Policy-MCP; then
+    pass "Model and MCP assets ready for packmate-lab Playground"
+  else
+    fail "Model and MCP assets ready for packmate-lab Playground"
+  fi
 fi
 
 # SSE + heartbeats

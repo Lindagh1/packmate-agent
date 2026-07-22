@@ -18,20 +18,25 @@ Classification helpers: `make preflight` prints PASS / WARNING / BLOCKED / OPTIO
 
 ## What participants must ClickOps
 
-- Create Data Science Project
+- Create Data Science Project (`packmate-lab`)
 - Create code-server Workbench
-- AI asset endpoints / Playground / system prompt / MCP / export
+- Clone repo → `make preflight` / `make bootstrap` / `make verify`
+- Playground in **Packmate Lab** (select model + enable MCP + paste system prompt + test)
 - Start Pipeline `packmate-ci`
 - Argo CD Sync (if GitOps present)
+
+Participants must **not** create the custom model endpoint, enter model URLs/tokens, or switch to `my-first-model` for the Playground path.
 
 ## What bootstrap automates
 
 - Secrets from env (values never printed)
+- Enable Gen AI **custom endpoints** feature (`aiAssetCustomEndpoints=true`) when needed
+- Discover/test the shared model Service in `my-first-model`
 - Weather + Baggage MCP, backend, frontend, Routes, NetworkPolicies
 - MCP ConfigMap registration (preserves other keys)
+- **Automatic** Packmate custom model endpoint in `packmate-lab` (ConfigMap + Secret)
 - Tekton `packmate-ci` resources
 - Argo CD manifests when CRDs exist
-- Model endpoint **helper** (default: print ClickOps values; optional CLI apply)
 
 ## What participants must NOT do
 
@@ -88,12 +93,15 @@ SKIP_CONFIRM=true make bootstrap
 make verify
 ```
 
-## Model modes
+## Shared model + custom endpoint (official lab)
 
-- **Mode A:** Playground in `my-first-model` (always works if model Ready).
-- **Mode B:** Custom endpoint in `packmate-lab` — participant ClickOps using printed URL/Model ID (default). Optional `CREATE_MODEL_CUSTOM_ENDPOINT=true` for instructor automation.
-
-Never create a second vLLM / InferenceService for Packmate.
+- The physical Llama InferenceService stays only in **`my-first-model`** (one GPU allocation).
+- Bootstrap creates a **custom model endpoint** in each lab project (`packmate-lab`) that points at the shared cluster-local Service URL.
+- Defaults: `ENABLE_CUSTOM_ENDPOINTS=true`, `CREATE_MODEL_CUSTOM_ENDPOINT=true`.
+- Custom endpoints are a **Technology Preview** feature in OpenShift AI 3.4.
+- Persistence matches Gen AI Studio: ConfigMap `gen-ai-aa-custom-model-endpoints` + Secret `endpoint-api-key-<n>` (never print Secret values).
+- Do **not** enable `externalProviders` for `.svc.cluster.local` URLs.
+- Never create a second vLLM / InferenceService for Packmate.
 
 ## Pipelines
 

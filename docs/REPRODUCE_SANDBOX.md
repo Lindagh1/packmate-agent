@@ -16,8 +16,8 @@ Bootstrap deploys from **prebuilt images** (GHCR/Quay/internal digests). It does
 
 | Layer | Responsibility |
 |-------|----------------|
-| Participant ClickOps | DSP, Workbench, AI assets, Playground, Pipeline Start, Argo Sync |
-| Bootstrap automation | MCP, backend/frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
+| Participant ClickOps | DSP, Workbench, clone, make targets, Playground (select assets), Pipeline Start, Argo Sync |
+| Bootstrap automation | Custom endpoints feature, shared-model discovery, MCP, custom model endpoint, backend/frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
 | Platform prerequisites | OpenShift AI, Pipelines, (GitOps), GPU model in `my-first-model` |
 
 ## Persist vs ephemeral
@@ -54,11 +54,19 @@ Create the Data Science Project from the OpenShift AI dashboard.
 
 Instructor-only: `ALLOW_CREATE_NAMESPACE=true`.
 
-### Model endpoint
+### Model endpoint (automated)
 
-Default `CREATE_MODEL_CUSTOM_ENDPOINT=false` prints **MANUAL STEP REQUIRED** with
-exact URL / Model ID / display name for Create endpoint ClickOps.
-Mode A: use Playground in `my-first-model`.
+Official lab defaults:
+
+```bash
+ENABLE_CUSTOM_ENDPOINTS=true
+CREATE_MODEL_CUSTOM_ENDPOINT=true
+```
+
+Bootstrap discovers the shared predictor in `my-first-model`, creates the Packmate
+custom endpoint in `packmate-lab`, and fails if creation/verification fails.
+Participants never run Create endpoint ClickOps. Quote spaced display/use-case
+values in `config/sandbox.env` (see `config/sandbox.env.example`).
 
 ## Publish images (instructor, once per version)
 
