@@ -1,105 +1,131 @@
-# Instructor guide
+# Instructor guide — Packmate v2 (OpenShift AI first touch)
 
-## Detected platform (read-only audit 2026-07-16)
+Lab duration for participants: **≈120 minutes**.
+Your prep: **45–90 minutes** on a ready cluster (longer the first time you publish images).
 
-| Item | Value |
-|------|-------|
-| OpenShift AI | **Self-Managed 3.4.2** (`rhods-operator.3.4.2`) |
-| DataScienceCluster | `default-dsc` Ready |
-| Workbenches | Managed / Ready |
-| KServe / model | `llama-32-3b-instruct` Ready in `my-first-model` |
-| TrustyAI | Operator Managed (pods Running); **no** TrustyAIService/EvalHub instances |
-| Llama Stack Operator | Managed / Ready; no LlamaStackDistribution instances |
-| Pipelines | OpenShift Pipelines **1.22.4** |
-| OpenShift GitOps / Argo CD | **Absent** |
-| Argo Rollouts | **Absent** |
-| Playground MCP ConfigMap `gen-ai-aa-mcp-servers` | **Absent** at audit |
+## Platform matrix (audit this cluster before class)
 
-Details: `docs/implementation/OPENSHIFT_AI_CAPABILITIES.md`.
+| Component | Status on reference sandbox (2026-07) | Lab impact |
+|-----------|----------------------------------------|------------|
+| OpenShift AI (`rhods-operator` 3.4.x) | **Required** | Blocks lab if absent |
+| Model `llama-32-3b-instruct` in `my-first-model` | **Required** | Shared; never redeploy for Packmate |
+| OpenShift Pipelines 1.22.x | **Required for Module 9** | Warn + screenshots if absent |
+| OpenShift GitOps / Argo CD | **Optional Module 10** | `GITOPS_OPERATOR_REQUIRED` if absent |
+| Argo Rollouts | Optional annex | Not in main path |
+| EvalHub instance | Optional annex | `EVALHUB_OPTIONAL_NOT_CONFIGURED` |
 
-## Operators / features required for the full story
+Classification helpers: `make preflight` prints PASS / WARNING / BLOCKED / OPTIONAL_UNAVAILABLE.
 
-| Capability | Required? | Notes |
-|------------|-----------|-------|
-| OpenShift AI (dashboard, workbenches, KServe) | Yes | Present |
-| Model `llama-32-3b-instruct` | Yes | Present |
-| MCP registration ConfigMap | Yes for Playground tools | Instructor/admin creates example from `deploy/examples/mcp-registration/` |
-| TrustyAI / EvalHub instance | Optional Level 2 | CRDs present; create only if demoing EvalHub |
-| OpenShift Pipelines | Yes for live Tekton | Present |
-| OpenShift GitOps | Optional live sync | Manifests ready; Operator absent |
-| Argo Rollouts | Optional live canary | Manifests ready; Operator absent |
+## What participants must ClickOps
 
-## Resources to prepare before the session
+- Create Data Science Project
+- Create code-server Workbench
+- AI asset endpoints / Playground / system prompt / MCP / export
+- Start Pipeline `packmate-ci`
+- Argo CD Sync (if GitOps present)
 
-1. Confirm model InferenceService Ready in `my-first-model` (do **not** redeploy for Packmate Lab).
-2. Create Data Science Project `packmate-lab` (or let Module 2 create it).
-3. Prefetch Workbench image (code-server / VS Code + Python).
-4. (Admin) Deploy MCP Routes or apply Packmate overlay when ready for live demo — **not** required for local validation.
-5. (Admin) Create `gen-ai-aa-mcp-servers` with real Route URLs ending in `/mcp`.
-6. Register the Packmate Lab custom model endpoint (reuses the shared predictor):
+## What bootstrap automates
 
-   ```bash
-   bash scripts/create-packmate-model-endpoint.sh
-   bash scripts/verify-sandbox.sh
-   ```
+- Secrets from env (values never printed)
+- Weather + Baggage MCP, backend, frontend, Routes, NetworkPolicies
+- MCP ConfigMap registration (preserves other keys)
+- Tekton `packmate-ci` resources
+- Argo CD manifests when CRDs exist
+- Model endpoint **helper** (default: print ClickOps values; optional CLI apply)
 
-   Details: `docs/REPRODUCE_SANDBOX.md`. Enables `aiAssetCustomEndpoints` and creates
-   ConfigMap `gen-ai-aa-custom-model-endpoints` + Secret `endpoint-api-key-1` in `packmate-lab`.
-7. Optional: create EvalHub + TrustyAIService from `evaluations/*/`.
-8. Do **not** commit tokens; create `packmate-llm` Secret only in-cluster when applying (instructor).
+## What participants must NOT do
 
-## Model and MCP
+- Install Operators
+- Build four images at lab start
+- Deploy or modify the Llama InferenceService
+- Commit Secrets / `config/sandbox.env`
+- Use Argo CD admin password
+- Port-forward for the main path
 
-- Model: `llama-32-3b-instruct` in `my-first-model`, exposed in Packmate Lab as **Packmate Llama 3.2 3B**
-- MCP: `weather-mcp`, `baggage-policy-mcp` — Streamable HTTP `/mcp`
-- Traveler profile: **not** an MCP
+## Persistent vs ephemeral
 
-## Playground configuration
+### PERSISTANT
 
-- System instructions: `playground/system-instructions.md`
-- Prompts: `playground/test-prompts.json`
-- Expected tools: `playground/expected-tool-calls.json`
+- Git repository + branch `packmate-v2`
+- GitHub Actions workflow `.github/workflows/publish-lab-images.yml`
+- Images on **GHCR or Quay** (digest-pinned)
+- Manifests, system prompt, test prompts, datasets, documentation
 
-## EvalHub / TrustyAI
+### ÉPHÉMÈRE
 
-- Preparatory YAML under `evaluations/`
-- `evaluations/scripts/run_evalhub_optional.sh` exits 0 when absent
-- Deterministic gate remains mandatory (`backend/evals` / `evaluations/scripts/run_deterministic_gate.sh`)
+- Data Science Project / Workbench / PVC
+- Secrets, Deployments, Routes
+- MCP registration ConfigMap entries
+- PipelineRuns
+- Argo CD Application
+- Custom model endpoint ConfigMap/Secret in `packmate-lab`
+- EvalHub instance (if any)
 
-## Workbench preparation
+## Images (critical)
 
-- Prefer UI creation; example CR: `deploy/workbench/notebook-code-server.example.yaml` (not applied by CI)
-- Clone: `https://github.com/Lindagh1/packmate-agent.git` → `git switch packmate-v2`
+Internal OpenShift registry dies with the sandbox. Publish once:
 
-## Pre-session validation
+1. Tag `lab-v1.0.0` or run **workflow_dispatch** on `publish-lab-images`.
+2. Wait for four digests in the job summary.
+3. GitHub → Packages → each image → **Change visibility → Public**.
+4. Put refs into the class `config/sandbox.env` template (not in Git).
+
+Bootstrap accepts **Quay or GHCR**; it does not hard-code a registry.
+
+## Pre-session checklist
+
+See `docs/INSTRUCTOR_SETUP_CHECKLIST.md`.
+
+Minimum:
 
 ```bash
-oc get datasciencecluster
-oc get inferenceservice -n my-first-model
-oc get csv -A | grep rhods-operator
-backend/.venv/bin/pytest -q
-cd mcp-servers/weather && pytest -q
-cd mcp-servers/baggage-policy && pytest -q
-evaluations/scripts/run_deterministic_gate.sh
-./scripts/validate-manifests.sh
-./scripts/security-check.sh
+cp config/sandbox.env.example /tmp/packmate-class.env
+# fill *_IMAGE digests + dummy LLM key
+export PACKMATE_CONFIG=/tmp/packmate-class.env
+# on a smoke project:
+SKIP_CONFIRM=true make preflight
+SKIP_CONFIRM=true make bootstrap
+make verify
 ```
 
-## Reset procedure
+## Model modes
 
-1. Delete participant Workbench PVCs if disk full (UI).
-2. Reset Playground chat / reload exported instructions.
-3. Do not delete shared model namespace.
-4. Optional: delete lab namespace Deployments only if instructor owns that namespace.
-5. Prefer demos via **SSE** `POST /api/v1/chat/stream` on the public Route so AWS Classic ELB idle (~60s) does not cut long chats; sync `/api/v1/chat` remains for tests.
+- **Mode A:** Playground in `my-first-model` (always works if model Ready).
+- **Mode B:** Custom endpoint in `packmate-lab` — participant ClickOps using printed URL/Model ID (default). Optional `CREATE_MODEL_CUSTOM_ENDPOINT=true` for instructor automation.
 
-## Solutions / optional by version
+Never create a second vLLM / InferenceService for Packmate.
 
-- If Playground MCP UI differs slightly on 3.4.x patches, follow Red Hat “Configuring MCP servers” docs for ConfigMap shape.
-- If GitOps/Rollouts Operators appear later, existing `gitops/` and prod Rollout manifests apply without redesign.
-- MLflow DSC component was **Removed** — do not depend on MLflow unless activated.
+## Pipelines
 
-## Duration
+Apply via bootstrap (`CREATE_PIPELINE=true`). Participants only **Start** `packmate-ci`.
+Pipeline builds **backend only**. Promote digest with `scripts/promote-backend-image.sh` (confirm + optional local commit, **no push**).
 
-- Full lab: 4–6 hours (`docs/PARTICIPANT_GUIDE.md` Modules 1–10)
-- Demo only: 20–30 minutes (`docs/DEMO_SCRIPT.md`)
+## GitOps
+
+If Operator missing: share `docs/INSTALL_GITOPS_PREREQUISITE.md` and skip live Sync.
+If present: Application uses **manual sync**, prune off, self-heal off, destination `packmate-lab` only.
+
+## Evaluation
+
+Mandatory: deterministic quality gate (threshold **0.90**, reference score **0.9559**).
+EvalHub: optional annex only.
+
+## Reset / cleanup
+
+```bash
+make cleanup   # interactive; types DELETE-PACKMATE-LAB
+```
+
+Does not touch `my-first-model` or Operators.
+
+## Cluster unavailable
+
+Fall back to screenshots + local `make test` / Compose. Do not invent “validated” cluster features.
+
+## Duration guide
+
+| Phase | Time |
+|-------|------|
+| Instructor image publish (once) | 30–60 min |
+| Instructor cluster smoke | 30 min |
+| Participant lab | 120 min |

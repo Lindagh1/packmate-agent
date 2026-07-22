@@ -255,3 +255,15 @@ Script interactif (à exécuter manuellement) :
 `scripts/cleanup-packmate-lab.sh`
 
 Ne touche pas `my-first-model`, n’installe/désinstalle aucun Operator, et demande confirmation.
+
+## Lab finalization (2026-07-22)
+
+| Item | Status |
+|------|--------|
+| `make preflight` / `bootstrap` / `verify` | Implemented; validated on current sandbox |
+| Quality gate | **0.9559** (threshold 0.90) |
+| Pipeline `packmate-ci` | Applied in `packmate-lab` — Start from UI; PipelineRun not auto-started (avoids replacing live backend) |
+| GitOps / Argo CD | **GITOPS_OPERATOR_REQUIRED** — manifests validated client-side only |
+| GHCR publish workflow | Present; images **not** published until workflow runs |
+| Custom model endpoint | Default ClickOps (`CREATE_MODEL_CUSTOM_ENDPOINT=false`) |
+| EvalHub / Rollouts | Optional / unavailable — do not fail verify |

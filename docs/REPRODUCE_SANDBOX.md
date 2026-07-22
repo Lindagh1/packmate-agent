@@ -1,64 +1,82 @@
 # Reproduce the Packmate OpenShift AI sandbox
 
-This guide recreates the **Packmate Lab** Data Science Project wiring against the
-shared model already running in `my-first-model`. It does **not** redeploy vLLM.
-
-## Prerequisites
-
-- `oc` logged in as a user who can manage `packmate-lab` and read `my-first-model`
-- OpenShift AI **3.4.x** with Gen AI studio
-- InferenceService `llama-32-3b-instruct` Ready in `my-first-model`
-- Optional local env: `cp config/sandbox.env.example config/sandbox.env`
-
-## What gets created
-
-| Resource | Namespace | Purpose |
-|----------|-----------|---------|
-| `OdhDashboardConfig` patch `aiAssetCustomEndpoints: true` | `redhat-ods-applications` | Enables UI **Create endpoint** |
-| ConfigMap `gen-ai-aa-custom-model-endpoints` | `packmate-lab` | Same persistence as Gen AI **Create endpoint** |
-| Secret `endpoint-api-key-1` | `packmate-lab` | Credential referenced by the ConfigMap |
-
-MCP servers remain registered via platform ConfigMap `gen-ai-aa-mcp-servers`
-(see `deploy/examples/mcp-registration/`).
-
-## Steps
+Target: a **new ephemeral sandbox** where participants ClickOps the Data Science
+Project + Workbench, then run:
 
 ```bash
-# 1) Optional env
-cp config/sandbox.env.example config/sandbox.env
-# edit MODEL_TOKEN only if the predictor requires auth
-
-# 2) Register custom endpoint (discovers Service port, probes /v1/models)
-bash scripts/create-packmate-model-endpoint.sh
-
-# or full bootstrap helper
-bash scripts/bootstrap-sandbox.sh
-
-# 3) Verify
-bash scripts/verify-sandbox.sh
+make preflight
+make bootstrap
+make verify
 ```
 
-## UI check
+Bootstrap deploys from **prebuilt images** (GHCR/Quay/internal digests). It does
+**not** rebuild four images and does **not** redeploy the Llama model.
 
-1. Gen AI studio → AI asset endpoints → Project: **Packmate Lab** → Models  
-   Expect: **Packmate Llama 3.2 3B**, plus MCP tab entries when registered.
-2. Gen AI studio → Playground → Project: **Packmate Lab**  
-   Select the model and the two Packmate MCP servers.
+## Architecture split
 
-## Internal URL
+| Layer | Responsibility |
+|-------|----------------|
+| Participant ClickOps | DSP, Workbench, AI assets, Playground, Pipeline Start, Argo Sync |
+| Bootstrap automation | MCP, backend/frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
+| Platform prerequisites | OpenShift AI, Pipelines, (GitOps), GPU model in `my-first-model` |
 
-The script probes the live Service. On this lab the predictor is a **headless**
-Service: clients must use the **pod targetPort** (typically `8080`), not Service
-port `80`:
+## Persist vs ephemeral
+
+**Persistent:** Git repo, GHCR/Quay images, manifests, system prompt, docs.
+**Ephemeral:** Project, Workbench, Secrets, Deployments, Routes, MCP registration, PipelineRuns, Argo Application, custom endpoint objects.
+
+## Configure
+
+```bash
+cp config/sandbox.env.example config/sandbox.env
+# Set digest-pinned *_IMAGE values from the publish-lab-images workflow summary.
+# Never commit config/sandbox.env.
+```
+
+## Commands
+
+```bash
+make preflight    # PASS/WARNING/BLOCKED/OPTIONAL_UNAVAILABLE
+make bootstrap    # confirmation prompt; SKIP_CONFIRM=true for CI-like smoke
+make verify       # non-destructive; exit 0 = lab core ready
+make cleanup      # interactive only
+```
+
+### Namespace policy
+
+Default: participant creates the Data Science Project in the UI.
+If missing, bootstrap prints:
 
 ```text
-http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
+MANUAL STEP REQUIRED:
+Create the Data Science Project from the OpenShift AI dashboard.
 ```
+
+Instructor-only: `ALLOW_CREATE_NAMESPACE=true`.
+
+### Model endpoint
+
+Default `CREATE_MODEL_CUSTOM_ENDPOINT=false` prints **MANUAL STEP REQUIRED** with
+exact URL / Model ID / display name for Create endpoint ClickOps.
+Mode A: use Playground in `my-first-model`.
+
+## Publish images (instructor, once per version)
+
+1. Actions → **publish-lab-images** → workflow_dispatch **or** push tag `lab-v*`.
+2. Copy four digest refs from the job summary.
+3. Make each GHCR package **Public**.
+4. Distribute refs via `sandbox.env` (out of band).
+
+Internal registry images vanish when the sandbox is deleted; GHCR/Quay do not.
+
+## GitOps absent
+
+See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`).
 
 ## Safety
 
-- Never commit `config/sandbox.env` or real tokens
-- Never create an external Route for the model
-- Never modify the Deployment / InferenceService in `my-first-model`
-- Do not set `genAiStudioConfig.aiAssetCustomEndpoints.externalProviders` to true
-  unless you intentionally allow third-party providers
+- No Secrets in Git
+- No `:latest`
+- No model redeploy
+- No Operator install from lab scripts
+- Destructive cleanup requires typing `DELETE-PACKMATE-LAB`

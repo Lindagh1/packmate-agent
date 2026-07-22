@@ -1,5 +1,16 @@
 # Architecture
 
+## Lab pedagogy (120 minutes)
+
+| Layer | Examples |
+|-------|----------|
+| Participant ClickOps | Data Science Project, Workbench, AI asset endpoints, Playground, Pipeline Start, Argo Sync |
+| `make bootstrap` | MCP servers, FastAPI, frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
+| Platform prerequisites | OpenShift AI, Pipelines, optional GitOps, shared Llama in `my-first-model`, prebuilt images |
+
+Playground = **model + system prompt + MCP**.
+FastAPI Packmate = Playground idea **industrialized** (Pydantic validation, MCP cache, bounded LLM retry, SSE + heartbeats, metrics, NetworkPolicies).
+
 ## Runtime components (OpenShift AI–centered)
 
 ```mermaid

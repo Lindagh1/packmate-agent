@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## Lab bootstrap / preflight
+
+| Message | Action |
+|---------|--------|
+| `MANUAL STEP REQUIRED: Create the Data Science Project` | Create DSP in OpenShift AI UI first (`ALLOW_CREATE_NAMESPACE` is false by default) |
+| `BLOCKED` model not Ready | Instructor checks `my-first-model` — do not redeploy from the lab |
+| Image empty / unreachable | Instructor must publish GHCR/Quay digests into `config/sandbox.env` |
+| `GITOPS_OPERATOR_REQUIRED` | Module 10 screenshot-only — see `docs/INSTALL_GITOPS_PREREQUISITE.md` |
+| `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
+
 ## `oc: command not found`
 
 Install the official OpenShift client into `~/.local/bin` from `mirror.openshift.com`.

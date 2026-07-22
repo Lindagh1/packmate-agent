@@ -1,5 +1,17 @@
 # Operations
 
+## Lab Makefile
+
+| Target | Purpose |
+|--------|---------|
+| `make preflight` | Cluster/image checks |
+| `make bootstrap` | Idempotent deploy from prebuilt images |
+| `make verify` | Non-destructive readiness |
+| `make cleanup` | Interactive namespace delete |
+| `make test` | Unit tests + quality gate + security-check |
+| `make render` | Kustomize render |
+| `make promote` | Local backend digest bump (no push) |
+
 ## Health endpoints
 
 | Endpoint | Purpose |

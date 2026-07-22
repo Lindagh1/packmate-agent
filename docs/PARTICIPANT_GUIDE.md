@@ -1,472 +1,294 @@
-# Packmate participant guide — OpenShift AI native path
+# Packmate participant guide — OpenShift AI first touch (≈120 min)
 
-This lab is designed to run primarily inside an **OpenShift AI Workbench**, not on a laptop IDE. Cursor is optional. Estimated total time: **4–6 hours**.
-
-Repository: `https://github.com/Lindagh1/packmate-agent.git`  
+Repository: `https://github.com/Lindagh1/packmate-agent.git`
 Branch: `packmate-v2`
+Focus: **OpenShift AI** (Data Science Project, Workbench, AI asset endpoints, MCP, Playground).
+Secondary (visual): OpenShift Pipelines + Argo CD.
+
+You do **ClickOps** for discovery and prototyping. Automation (`make bootstrap`) deploys Packmate workloads from **prebuilt images** — you do **not** build four images at the start, install Operators, or deploy the Llama model.
 
 ---
 
-## Module 1 — Discover Packmate and OpenShift AI
+## Before you start
 
-**Objective:** Understand the Packmate architecture and why the lab uses OpenShift AI.  
-**Duration:** 20 minutes  
-**Prerequisites:** Access to the OpenShift AI dashboard.
+Ask the instructor for:
 
-### Steps
+- OpenShift AI dashboard URL
+- Confirmation that model `llama-32-3b-instruct` is Ready in `my-first-model`
+- A filled `config/sandbox.env` (or values to paste) with four prebuilt image references
 
-1. Open the OpenShift AI dashboard from your cluster console.
-2. Read `docs/ARCHITECTURE.md` (clone later in Module 2 if you do not have the repo yet).
-3. Identify the components:
-
-| Layer | Components |
-|-------|------------|
-| UX | React + PatternFly frontend |
-| App | FastAPI agent (`PACKMATE_TOOL_MODE=local` or `mcp`) |
-| Tools | weather-mcp, baggage-policy-mcp (Streamable HTTP); traveler profile stays in-app |
-| Model | `llama-32-3b-instruct` (KServe / AI asset endpoints) |
-| Delivery | Tekton → GitOps → Argo CD → Argo Rollouts (canary backend) |
-
-### Expected result
-
-You can explain the packing use case and name the MCP vs in-app tools.
-
-### Validation
-
-- [ ] You can list weather-mcp, baggage-policy-mcp, and traveler_profile (local only).
-- [ ] You know production backend canary uses Argo Rollouts when the Operator is installed.
-
-### Troubleshooting
-
-- Dashboard missing → ask the instructor; RHODS/OpenShift AI operator may be down.
-- Architecture unclear → start from the diagram in `docs/ARCHITECTURE.md`.
-
-### Business / technical value
-
-Participants see a full path from Gen AI prototyping to hardened delivery, not a chatbot demo alone.
-
----
-
-## Module 2 — Create the OpenShift AI project
-
-**Objective:** Create Data Science Project `packmate-lab` and a code-server Workbench, then clone the repo.  
-**Duration:** 30 minutes  
-**Prerequisites:** OpenShift AI Workbenches component enabled (verified Managed on OAI 3.4.2).
-
-### Steps
-
-1. In OpenShift AI → **Data Science Projects** → Create project named `packmate-lab`.  
-   `[Screenshot: Create Data Science Project]`
-2. Create a **Workbench**:
-   - Name: `packmate-code`
-   - Image: code-server / VS Code compatible Python + web image (instructor may specify the catalog name)
-   - CPU: 2, Memory: 4–8 Gi, Storage: 20–40 Gi  
-   `[Screenshot: Workbench configuration]`
-3. Open the Workbench terminal.
-4. Clone and switch branch:
+Maximum early commands:
 
 ```bash
 git clone https://github.com/Lindagh1/packmate-agent.git
 cd packmate-agent
 git switch packmate-v2
+cp config/sandbox.env.example config/sandbox.env
+# paste instructor image refs into config/sandbox.env — never commit secrets
+make preflight
+make bootstrap
+make verify
 ```
-
-5. Optional declarative example (not applied by default): `deploy/workbench/`.
-
-### Expected result
-
-Repo checked out on `packmate-v2` inside the Workbench.
-
-### Validation
-
-```bash
-git rev-parse --abbrev-ref HEAD   # packmate-v2
-ls backend frontend mcp-servers playground
-```
-
-### Troubleshooting
-
-- Clone denied → use HTTPS + personal access token in Workbench credentials, never commit the token.
-- Image pull errors → ask instructor for the approved Workbench image.
-
-### Business / technical value
-
-The Workbench is the shared lab environment: reproducible, cluster-networked to the model and MCP Services.
 
 ---
 
-## Module 3 — Explore the model
+## Module 1 — Discover Packmate — 5 min
 
-**Objective:** Locate `llama-32-3b-instruct` in AI asset endpoints and run a simple test.  
-**Duration:** 20 minutes  
-**Prerequisites:** Model deployed in `my-first-model` (instructor-prepared).
+**Objective:** Understand the packing use case and the OpenShift AI story.
+**Prerequisites:** Dashboard access.
 
 ### Steps
 
-1. Open **Gen AI studio → AI asset endpoints** and select project **Packmate Lab**.  
-   `[Screenshot: AI asset endpoints]`
-2. On the **Models** tab, confirm **Packmate Llama 3.2 3B** (custom endpoint to the shared model in `my-first-model`).
-3. Also confirm MCP entries **Packmate-Weather-MCP** and **Packmate-Baggage-Policy-MCP** when the instructor has registered them.
-4. In-cluster URL used by Packmate (headless Service → pod port `8080`):
+1. Open the OpenShift AI dashboard.
+2. Skim `docs/ARCHITECTURE.md` after clone (Module 4) or the instructor slide.
+3. Note: Playground = model + system prompt + MCP; FastAPI app = same idea industrialized.
 
-```text
-http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
-```
-
-5. Optional Workbench smoke test (requires network to the model namespace):
-
-```bash
-curl -sS "$BASE_URL/models" | head
-```
-
-Use instructor-provided env vars; **never commit keys**. Reproduction helper: `docs/REPRODUCE_SANDBOX.md` / `scripts/create-packmate-model-endpoint.sh`.
-
-### Expected result
-
-You can name the Packmate Lab model asset and its in-cluster endpoint.
-
-### Validation
-
-- [ ] **Packmate Llama 3.2 3B** appears under Packmate Lab AI asset endpoints (or `oc get cm gen-ai-aa-custom-model-endpoints -n packmate-lab`).
-- [ ] Model Ready in `my-first-model`: `oc get inferenceservice -n my-first-model` (read-only).
-
-### Troubleshooting
-
-- 503 / not Ready → wait for predictor pods; instructor checks GPU/CPU capacity.
-- Local laptop port-forward drops → prefer Workbench in-cluster access.
-
-### Business / technical value
-
-Model discovery is productized (AI assets), not a hidden Service URL only.
+**Expected:** You can name Weather MCP, Baggage MCP, and the Llama model.
+**Validation:** [ ] You know the app is Packmate packing advice.
+**Common error:** Looking for Streamlit — v2 uses React + FastAPI.
+**Tech value:** Gen AI prototype → production path on one platform.
+**Business value:** Faster packing advice demos with policy-aware tools.
+**Screenshot:** `[Screenshot required: Data Science Project]` (after Module 2)
 
 ---
 
-## Module 4 — Deploy and register MCP servers
+## Module 2 — Create the Data Science Project — 5 min
 
-**Objective:** Understand weather-mcp and baggage-policy-mcp, verify health, register for Playground.  
-**Duration:** 40 minutes  
-**Prerequisites:** Instructor/GitOps may deploy MCP manifests; participants may also run locally in Workbench.
+**Objective:** Create your lab project manually.
+**Prerequisites:** OpenShift AI user access.
 
-### Steps
+### ClickOps
 
-1. Read `mcp-servers/README.md`.
-2. Local verification in Workbench (optional):
+1. OpenShift AI → **Data Science Projects** → **Create project**.
+2. Name: `packmate-lab` (or instructor name) → Create.
+   `[Screenshot required: Data Science Project]`
 
-```bash
-cd mcp-servers/weather && python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt && pytest -v
-```
-
-```bash
-cd mcp-servers/baggage-policy && python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt && pytest -v
-```
-
-3. Cluster manifests: `deploy/base/mcp-weather/`, `deploy/base/mcp-baggage/` (ClusterIP + Route).
-4. **Registration (cluster admin / instructor):** ConfigMap `gen-ai-aa-mcp-servers` in `redhat-ods-applications`. Example only: `deploy/examples/mcp-registration/`.  
-   At audit time this ConfigMap was **absent** — without it, Playground cannot discover MCP servers.
-5. Confirm URLs end with `/mcp` (Streamable HTTP).
-
-### Expected result
-
-MCP servers tested locally; registration path understood (even if admin applies ConfigMap).
-
-### Validation
-
-- [ ] Pytest passes for both MCP servers.
-- [ ] You know traveler profile is **not** a shared MCP.
-
-### Troubleshooting
-
-- Playground lists no MCP → ConfigMap missing or wrong URL/path.
-- Health 421 Host errors → Packmate servers disable DNS-rebinding Host checks for OpenShift Routes.
-
-### Business / technical value
-
-Tools become first-class platform assets reusable from Playground and from the FastAPI app.
+**Expected:** Project appears in the list.
+**Validation:** [ ] Project visible in the dashboard.
+**Common error:** Creating a plain OpenShift project without the AI dashboard — use **Data Science Projects**.
+**Do not:** Install Operators or create cluster Roles.
 
 ---
 
-## Module 5 — Prototype in Gen AI Playground
+## Module 3 — Create the Workbench — 10 min
 
-**Objective:** Prototype Packmate behaviour with model + MCP before coding the app integration.  
-**Duration:** 45 minutes  
-**Prerequisites:** Model visible; MCP registered if Playground tools are required.
+**Objective:** Open a code-server Workbench in your project.
+**Prerequisites:** Module 2 done.
 
-### Steps
+### ClickOps
 
-1. Open **Gen AI Playground** for project `packmate-lab` (or instructor project).
-2. Select model `llama-32-3b-instruct`.
-3. Enable Packmate Weather and Baggage Policy MCP servers; authorize tools.  
-   `[Screenshot: Playground with MCP tools]`
-4. Paste system instructions from `playground/system-instructions.md`.
-5. Run prompts from `playground/test-prompts.json` (Rome weather, Oslo winter, power bank checked, liquids cabin, unknown baggage, business, hiking, weather down, reveal-reasoning, fictional sensitive notes).
-6. Observe tool calls vs `playground/expected-tool-calls.json`.
-7. Compare one prompt **with MCP disabled** vs enabled.
-8. **Export** the Playground configuration for use in the Workbench.
+1. Open `packmate-lab` → **Workbenches** → **Create workbench**.
+2. Choose a **code-server** image (instructor-approved).
+3. Size: small/medium as instructed → Create → wait **Running**.
+   `[Screenshot required: Workbench configuration]`
+4. **Open** the Workbench terminal/UI.
 
-### Expected result
-
-Exported Playground config + confidence in tool-calling behaviour.
-
-### Validation
-
-- [ ] At least five prompts exercised.
-- [ ] Reveal-reasoning prompt does not dump chain-of-thought.
-- [ ] Sensitive notes are not sent to baggage MCP.
-
-### Troubleshooting
-
-- No tool calls → model too small / temperature high / instructions weak; retry with lower temperature.
-- MCP authorize fails → check Route TLS and ConfigMap URL.
-
-### Business / technical value
-
-Playground shortens the path from idea to application contract (tools + system instructions).
+**Expected:** code-server UI loads.
+**Validation:** [ ] Workbench status Running.
+**Common error:** Image pull Pending — wait or ask instructor (pre-pulled images).
 
 ---
 
-## Module 6 — Build the application
+## Module 4 — Clone and bootstrap — 15 min
 
-**Objective:** Wire exported ideas into FastAPI MCP client + React UI; run from Workbench.  
-**Duration:** 45 minutes  
-**Prerequisites:** Repo cloned; Python and Node available in Workbench image.
+**Objective:** Clone the repo and let automation deploy Packmate from prebuilt images.
+**Prerequisites:** Workbench Running; instructor `sandbox.env` values.
 
-### Steps
-
-1. Create environments:
+### Commands (Workbench terminal)
 
 ```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-
-cd ../frontend
-# use image Node or project nodeenv
-npm ci
+git clone https://github.com/Lindagh1/packmate-agent.git
+cd packmate-agent
+git switch packmate-v2
+cp config/sandbox.env.example config/sandbox.env
 ```
 
-2. Local tool mode for unit tests (default):
+Edit `config/sandbox.env`: set the four `*_IMAGE=` lines from the instructor (digest-pinned). Keep `LITELLM_API_KEY=dummy` unless told otherwise. **Never commit this file.**
 
 ```bash
-export PACKMATE_TOOL_MODE=local
-cd backend && pytest -q
+make preflight
+make bootstrap
+make verify
 ```
 
-3. MCP mode against local MCP servers (optional):
+`bootstrap` asks for confirmation, creates Secrets **without printing values**, deploys MCP + backend + frontend, tests health/SSE, registers MCP.
 
-```bash
-# terminal A
-cd mcp-servers/weather && PYTHONPATH=src uvicorn weather_mcp.app:app --port 8080
-# terminal B
-cd mcp-servers/baggage-policy && PYTHONPATH=src uvicorn baggage_policy_mcp.app:app --port 8081
-# terminal C
-export PACKMATE_TOOL_MODE=mcp
-export PACKMATE_WEATHER_MCP_URL=http://127.0.0.1:8080/mcp
-export PACKMATE_BAGGAGE_MCP_URL=http://127.0.0.1:8081/mcp
-export BASE_URL=... MODEL=llama-32-3b-instruct LITELLM_API_KEY=...
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-4. Frontend:
-
-```bash
-cd frontend && npm run dev -- --host 0.0.0.0 --port 5173
-```
-
-5. Use Workbench port forwarding / routes as provided by the platform.
-
-6. **Streaming exercise (public UI path):**
-
-```bash
-curl -sS -N --max-time 180 \
-  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
-  -X POST http://127.0.0.1:8000/api/v1/chat/stream \
-  -d '{"message":"Je pars a Rome pendant quatre jours avec un bagage cabine."}'
-```
-
-Observe in order:
-
-- [ ] `event: started` appears within a few seconds
-- [ ] `event: progress` with `weather` and/or `baggage_rules` when tools run
-- [ ] `event: heartbeat` if the model takes longer than ~10s
-- [ ] `event: completed` with a PackingResponse (destination + packing_items)
-- [ ] No `<think>` / chain-of-thought / medical notes in the stream
-
-The React UI calls `/api/v1/chat/stream` (not the sync endpoint). Cancel uses `AbortController`.
-
-### Expected result
-
-UI returns packing plans; MCP mode calls remote tools without duplicating rule logic.
-
-### Validation
-
-```bash
-curl -sS http://127.0.0.1:8000/health
-curl -sS http://127.0.0.1:8000/ready
-```
-
-### Troubleshooting
-
-- Frontend API proxy errors → check Vite proxy / backend URL.
-- MCP timeouts → increase `PACKMATE_MCP_TIMEOUT_SECONDS`.
-
-### Business / technical value
-
-Same MCP servers serve both Playground prototypes and production FastAPI.
+**Expected:** `verify-sandbox: OK` and a Frontend Route URL printed.
+**Validation:** [ ] `make verify` exits 0.
+**Common error:** `MANUAL STEP REQUIRED: Create the Data Science Project` — finish Module 2 first.
+**Screenshot:** `[Screenshot required: Repository open in code-server]`
+**Tech value:** Reproducible sandbox without rebuilding four images.
+**Business value:** Same lab works after the ephemeral cluster is replaced if images live on GHCR/Quay.
 
 ---
 
-## Module 7 — Evaluate Packmate
+## Module 5 — Explore AI asset endpoints — 10 min
 
-**Objective:** Run Level 1 deterministic evals and understand Level 2 TrustyAI/EvalHub.  
-**Duration:** 40 minutes  
-**Prerequisites:** Backend venv.
+**Objective:** Find the model and MCP servers in Gen AI studio.
+**Prerequisites:** Bootstrap done; MCP registered.
 
-### Steps
+### ClickOps — Mode A (guaranteed)
 
-1. Level 1 (mandatory):
+1. Gen AI studio → **AI asset endpoints** → Project: **my-first-model**.
+2. Confirm model `llama-32-3b-instruct`.
+   `[Screenshot required: AI asset endpoints]`
 
-```bash
-cd backend
-.venv/bin/python -m evals.runner --mode deterministic --threshold 0.90
-# or
-../evaluations/scripts/run_deterministic_gate.sh
-```
+### ClickOps — Mode B (single project, optional)
 
-2. Level 2 (optional / instructor): see `evaluations/README.md`.  
-   TrustyAI operator is Managed on OAI 3.4.2, but **no EvalHub instance was present at audit**. Do not claim EvalHub ran unless the instructor created one.  
-   `[Screenshot: EvalHub result]` (only if available)
+1. Gen AI studio → **AI asset endpoints** → Project: **Packmate Lab** → **Models** → **Create endpoint** if not present.
+2. Use values printed by bootstrap / `scripts/create-packmate-model-endpoint.sh` (`MANUAL STEP REQUIRED`).
+3. Confirm **Packmate Llama 3.2 3B**, **Packmate-Weather-MCP**, **Packmate-Baggage-Policy-MCP**.
 
-3. Compare two prompt/system-instruction variants conceptually (Playground export A vs B) using deterministic fixtures plus optional EvalHub.
-
-### Expected result
-
-Deterministic gate PASS; clear mental model of pytest vs TrustyAI.
-
-### Validation
-
-- [ ] Deterministic score ≥ 0.90.
-- [ ] You can explain why EvalHub absence must not break local PRs.
-
-### Troubleshooting
-
-- Gate fails after code change → inspect `backend/evals/reports/` and failed scenario IDs.
-- EvalHub script skips → expected when CRD/instance missing.
-
-### Business / technical value
-
-Ship safely with deterministic rules; use platform AI evals for qualitative/safety dimensions when available.
+**Expected:** Model + two MCP visible for your Playground project.
+**Validation:** [ ] You can name Model ID `llama-32-3b-instruct`.
+**Common error:** Looking in the wrong project — try `my-first-model` first (Mode A).
 
 ---
 
-## Module 8 — Industrialize
+## Module 6 — Prototype in Playground — 25 min
 
-**Objective:** Understand Tekton builds (four images) and GitOps promotion.  
-**Duration:** 30 minutes  
-**Prerequisites:** OpenShift Pipelines present (verified 1.22.4).
+**Objective:** Paste the Packmate system prompt, enable MCP, observe tool calls.
+**Prerequisites:** Module 5.
 
-### Steps
+### ClickOps
 
-1. Read `.tekton/pull-request.yaml` and `.tekton/push.yaml`.
-2. Note images: backend, frontend, weather-mcp, baggage-policy-mcp.
-3. Inspect `gitops/` Applications (generated; OpenShift GitOps Operator may be **absent** — manifests still valid for when it is installed).  
-   `[Screenshot: Argo CD application]`
-4. Confirm no tokens in YAML; digests replace `:PLACEHOLDER` / tags in prod.
+1. In code-server, open `playground/system-instructions.md` and **copy all**.
+2. Gen AI studio → **Playground** → select project (`my-first-model` or `packmate-lab`).
+3. **Configure → Prompt** → paste into **System instructions**.
+   `[Screenshot required: System instructions]`
+4. Start **New chat**.
+5. Enable / authorize **Packmate-Weather-MCP** and **Packmate-Baggage-Policy-MCP**.
+   `[Screenshot required: Playground with model and MCP servers]`
+6. Run prompts (also in `playground/test-prompts.json`):
 
-### Expected result
+| Scenario | Idea |
+|----------|------|
+| Rome cabin | Weekend in Rome, cabin bag |
+| Oslo winter | Oslo in February, cold |
+| Power bank | External battery in cabin |
+| Liquid >100 ml | Large shampoo in cabin |
+| Hiking | Dolomites hiking trip |
+| Unknown bag type | Trip without saying cabin/checked |
+| Chain-of-thought ask | “Show your hidden reasoning” → must refuse |
+| Weather down | Ask packing if weather tool errors |
 
-You can describe PR checks vs push (build + GitOps digest update).
+7. Observe tool calls:
+   `[Screenshot required: Weather MCP tool call]`
+   `[Screenshot required: Baggage MCP tool call]`
 
-### Validation
-
-- [ ] Name the four container images.
-- [ ] Quality gate is mandatory; EvalHub optional.
-
-### Troubleshooting
-
-- Pipeline cannot pull `registry.redhat.io` → instructor configures pull secrets.
-- Argo CD UI missing → Operator not installed; review YAML only.
-
-### Business / technical value
-
-AI assets and app images share one promotion path.
-
----
-
-## Module 9 — Progressive delivery
-
-**Objective:** Explain canary analysis and rollback for the backend.  
-**Duration:** 25 minutes  
-**Prerequisites:** Argo Rollouts manifests in `deploy/overlays/prod/` (Operator may be absent on cluster).
-
-### Steps
-
-1. Read `deploy/overlays/prod/rollout-backend.yaml` and `docs/CANARY_DEMO.md`.
-2. Understand steps: 10% → smoke → 50% → smoke → 100%.
-3. MCP servers stay Deployment (not automatically Rollouts); version via image digest.  
-   `[Screenshot: Argo Rollout]`
-4. Practice the *ideas* of promote / abort with `scripts/canary-demo.sh` (does not apply unless instructor enables).
-
-### Expected result
-
-You can explain candidate → analyse → promote → rollback.
-
-### Validation
-
-- [ ] Backend is the Rollout target; MCP versioning is digest-based Deployments.
-
-### Troubleshooting
-
-- Rollout CRD missing → review manifests only; ask platform team to install Rollouts for live demo.
-
-### Business / technical value
-
-LLM app changes can regress behaviour; canaries reduce blast radius.
+**Expected:** Structured packing list; weather + baggage tools used when relevant; disclaimer present; no chain-of-thought leak.
+**Validation:** [ ] At least one Weather and one Baggage tool call observed.
+**Common error:** MCP not authorized for the session — click Authorize.
+**Tech value:** Playground = model + system prompt + MCP.
+**Business value:** Safe policy messaging without inventing airline rules.
 
 ---
 
-## Module 10 — Observability and security
+## Module 7 — Export and compare — 10 min
 
-**Objective:** Use health/metrics/traces mindset and privacy rules.  
-**Duration:** 25 minutes  
-**Prerequisites:** Backend running.
+**Objective:** Export Playground code and contrast with the FastAPI app.
+**Prerequisites:** Successful Playground chat.
 
-### Steps
+### ClickOps
 
-1. Hit `/health`, `/ready`, `/metrics`.
-2. Confirm OTel defaults to exporter `none`; spans must not include medical notes.
-3. Run `./scripts/security-check.sh`.
-4. Review baggage disclaimer and demo-only rules.
-5. Confirm sensitive notes never go to MCP (`backend/app/tools/mcp_client.py`).
+1. In Playground use **View code** / **Copy code**.
+   `[Screenshot required: View code export]`
+2. In the repo, open `backend/app/agent/service.py` (read-only).
 
-### Expected result
+**Compare:**
 
-Security check PASS; privacy story clear.
+| Playground | FastAPI Packmate |
+|------------|------------------|
+| Prompt + MCP in UI | Same tools + schema validation |
+| Manual session | Cache, bounded LLM retry, SSE streaming |
+| Prototype | Metrics, NetworkPolicies, GitOps path |
 
-### Validation
-
-```bash
-./scripts/security-check.sh
-```
-
-### Troubleshooting
-
-- Security check fails on `:latest` in deploy → fix overlay images to digest/PLACEHOLDER.
-- Metrics scrape empty → ensure `/metrics` reachable in-cluster.
-
-### Business / technical value
-
-Trustworthy AI assistants need privacy, policy disclaimers, and operable telemetry.
+**Expected:** You can explain why industrializing matters.
+**Validation:** [ ] You stated one difference (validation, retry, or streaming).
 
 ---
 
-## Screenshot placeholders (do not invent images)
+## Module 8 — Run the industrialized application — 10 min
 
-- `[Screenshot: Create Data Science Project]`
-- `[Screenshot: Workbench configuration]`
-- `[Screenshot: AI asset endpoints]`
-- `[Screenshot: Playground with MCP tools]`
-- `[Screenshot: EvalHub result]`
-- `[Screenshot: Argo CD application]`
-- `[Screenshot: Argo Rollout]`
+**Objective:** Use the deployed React + FastAPI app on the Route.
+**Prerequisites:** `make verify` OK.
+
+### ClickOps / browser
+
+1. Open the Frontend Route from bootstrap output (or `oc get route packmate-frontend -n packmate-lab`).
+   `[Screenshot required: Packmate Route]`
+2. Submit a packing request (e.g. Rome cabin).
+3. Confirm a structured response returns (SSE under the hood).
+
+**Expected:** App responds without port-forward.
+**Validation:** [ ] Route returns packing advice.
+**Common error:** Using localhost — always use the OpenShift Route.
+
+---
+
+## Module 9 — Run the AI-aware Pipeline — 15 min
+
+**Objective:** Start `packmate-ci` from the UI and read the AI quality gate.
+**Prerequisites:** OpenShift Pipelines available; bootstrap created Pipeline.
+
+### ClickOps
+
+1. OpenShift Console → **Pipelines** → project `packmate-lab` → **packmate-ci** → **Start**.
+2. Accept defaults (repo `packmate-v2`) → Start.
+3. Watch the graph: clone → test → ai-quality-gate → build-backend → publish-result.
+   `[Screenshot required: Tekton Pipeline graph]`
+4. Open the **ai-quality-gate** logs: scenarios, score, threshold **0.90**, PASS/FAIL.
+   `[Screenshot required: AI quality gate result]`
+5. Copy the printed **backend digest**. Optionally promote later with `scripts/promote-backend-image.sh` (asks confirmation; **no auto push**).
+
+**Expected:** Pipeline completes; quality gate PASS (≥0.90).
+**Validation:** [ ] You recorded the score and digest.
+**Common error:** Pipelines Operator missing — instructor shows screenshots; lab continues.
+**Do not:** Expect all four images to rebuild — only **backend** builds.
+
+---
+
+## Module 10 — Sync with Argo CD — 10 min
+
+**Objective:** See OutOfSync → Sync → Healthy (if GitOps installed).
+**Prerequisites:** OpenShift GitOps Operator (instructor). If absent: read `docs/INSTALL_GITOPS_PREREQUISITE.md`.
+
+### ClickOps
+
+1. Open **Argo CD** from the OpenShift console (SSO — no admin password).
+2. Open application **packmate-lab**.
+3. Observe **Synced / Healthy** or follow instructor to create a digest change.
+   `[Screenshot required: Argo CD OutOfSync]`
+4. Click **Sync** (manual; prune disabled).
+   `[Screenshot required: Argo CD Synced and Healthy]`
+
+**Expected:** You understand GitOps reconcile without installing Operators.
+**Validation:** [ ] You can explain Synced vs OutOfSync.
+**Common error:** Trying to log in with Argo admin password — use OpenShift SSO.
+
+---
+
+## Conclusion — 5 min
+
+You completed an OpenShift AI first-touch path: project → Workbench → bootstrap → AI assets → Playground + MCP → export → Route app → Pipeline quality gate → (optional) Argo CD sync.
+
+**Optional annexes (not required today):** Argo Rollouts canary, EvalHub (`EVALHUB_OPTIONAL_NOT_CONFIGURED`).
+
+---
+
+## Screenshot checklist
+
+- `[Screenshot required: Data Science Project]`
+- `[Screenshot required: Workbench configuration]`
+- `[Screenshot required: Repository open in code-server]`
+- `[Screenshot required: AI asset endpoints]`
+- `[Screenshot required: Playground with model and MCP servers]`
+- `[Screenshot required: System instructions]`
+- `[Screenshot required: Weather MCP tool call]`
+- `[Screenshot required: Baggage MCP tool call]`
+- `[Screenshot required: View code export]`
+- `[Screenshot required: Packmate Route]`
+- `[Screenshot required: Tekton Pipeline graph]`
+- `[Screenshot required: AI quality gate result]`
+- `[Screenshot required: Argo CD OutOfSync]`
+- `[Screenshot required: Argo CD Synced and Healthy]`

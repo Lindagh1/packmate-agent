@@ -1,130 +1,83 @@
 # Packmate v2
 
-AI-powered travel packing assistant built for Red Hat Demo Platform labs.
+AI-powered travel packing assistant for an **OpenShift AI first-touch lab** (~120 minutes), with a short visual intro to **OpenShift Pipelines** and **Argo CD**.
 
-## What it is
+## Lab path (participants)
 
-Packmate helps travelers generate structured packing plans from a natural-language trip description. It combines:
+1. Create a Data Science Project (ClickOps)
+2. Create a code-server Workbench (ClickOps)
+3. Clone + `make preflight && make bootstrap && make verify`
+4. Explore AI asset endpoints + Gen AI Playground (system prompt + MCP)
+5. Export / compare with the FastAPI app
+6. Use the Route UI
+7. Start Pipeline `packmate-ci` (quality gate)
+8. Optional: Argo CD Sync
 
-- a React + PatternFly lab UI
-- a FastAPI agent backend
-- weather, baggage-rule, and traveler-profile tools
-- deterministic enrichment and privacy hardening
-- Podman containers and OpenShift GitOps delivery
+Guides: [`docs/PARTICIPANT_GUIDE.md`](docs/PARTICIPANT_GUIDE.md) · [`docs/INSTRUCTOR_GUIDE.md`](docs/INSTRUCTOR_GUIDE.md) · [`docs/REPRODUCE_SANDBOX.md`](docs/REPRODUCE_SANDBOX.md)
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-  User --> Route[OpenShift Route]
-  Route --> FE[Nginx Frontend]
-  FE -->|/api| BE[FastAPI Backend]
-  BE --> Weather[Open-Meteo]
-  BE --> LLM[OpenShift AI Model]
-  BE --> Metrics[/metrics]
+flowchart TB
+  subgraph clickops [Participant ClickOps]
+    DSP[Data Science Project]
+    WB[Workbench code-server]
+    PG[Gen AI Playground]
+    PipeUI[Pipelines UI]
+    ArgoUI[Argo CD Sync]
+  end
+  subgraph boot [make bootstrap]
+    MCP[Weather + Baggage MCP]
+    BE[FastAPI backend]
+    FE[React frontend]
+  end
+  subgraph platform [Platform prerequisites]
+    OAI[OpenShift AI]
+    Model[llama-32-3b-instruct in my-first-model]
+    Img[Prebuilt images GHCR/Quay]
+  end
+  DSP --> WB --> boot
+  Model --> PG
+  MCP --> PG
+  boot --> FE
+  FE --> BE
+  BE --> Model
+  BE --> MCP
+  PipeUI --> QG[AI quality gate]
+  Img --> boot
 ```
 
-## Local quick start
+**Playground** = model + system prompt + MCP.
+**FastAPI app** = same idea with validation, MCP cache, bounded LLM retry, SSE streaming, metrics, NetworkPolicies.
 
-### Backend
+## Makefile
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload --port 8000
+cp config/sandbox.env.example config/sandbox.env
+# set digest-pinned *_IMAGE values from instructor
+make preflight
+make bootstrap
+make verify
+make test
+make render
+make cleanup   # interactive
 ```
 
-### Frontend
+## Local development (optional)
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt && pytest -q
+cd ../frontend && npm ci && npm run test -- --run
 ```
 
-### Containers
+## Important constraints
 
-```bash
-podman compose up --build -d
-# UI: http://localhost:8080
-# API: http://localhost:8000
-```
+- Do **not** redeploy the shared Llama model
+- Do **not** commit Secrets or `config/sandbox.env`
+- Do **not** use image tag `latest`
+- GitOps / Rollouts / EvalHub are optional extensions when Operators are missing
 
-LLM env vars (never commit `.env`):
+## License
 
-```bash
-export BASE_URL=http://host.containers.internal:9000/v1
-export MODEL=llama-32-3b-instruct
-export LITELLM_API_KEY=dummy
-```
-
-For OpenShift AI locally, port-forward the predictor:
-
-```bash
-oc port-forward --address 0.0.0.0 \
-  -n my-first-model \
-  svc/llama-32-3b-instruct-predictor 9000:80
-```
-
-Prefer pod port `9000:8080` if service port-forward maps incorrectly.
-
-## Tests
-
-```bash
-cd backend && .venv/bin/pytest -v
-cd frontend && npm run lint && npm run test && npm run build
-```
-
-## Evaluations
-
-```bash
-cd backend
-.venv/bin/python -m evals.runner --mode deterministic --threshold 0.90
-```
-
-Live mode is manual only and never required by CI.
-
-## OpenShift
-
-Manifests live in `deploy/` (Kustomize).
-
-```bash
-oc kustomize deploy/overlays/dev
-./scripts/validate-manifests.sh
-./scripts/security-check.sh
-```
-
-Create namespace/secret yourself before real apply:
-
-```bash
-oc new-project packmate-dev
-oc create secret generic packmate-llm --from-literal=LITELLM_API_KEY='...' -n packmate-dev
-# then apply after review
-```
-
-## CI/CD and GitOps
-
-- Tekton Pipelines as Code: `.tekton/`
-- Argo CD apps: `gitops/`
-- Canary Rollouts (prod backend): see `docs/CANARY_DEMO.md`
-
-## Documentation
-
-| Doc | Purpose |
-|-----|---------|
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | System design |
-| [PARTICIPANT_GUIDE](docs/PARTICIPANT_GUIDE.md) | Hands-on lab path |
-| [INSTRUCTOR_GUIDE](docs/INSTRUCTOR_GUIDE.md) | Session setup |
-| [DEMO_SCRIPT](docs/DEMO_SCRIPT.md) | 15–30 min demo |
-| [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Common failures |
-| [OPERATIONS](docs/OPERATIONS.md) | Day-2 ops |
-| [SECURITY](docs/SECURITY.md) | Hardening |
-| [MIGRATION_FROM_V1](docs/MIGRATION_FROM_V1.md) | Streamlit → v2 |
-
-## Safety
-
-- No secrets in Git
-- Medical notes are not sent to the model by default
-- Logs/spans omit user message bodies and sensitive notes
+See repository license file.

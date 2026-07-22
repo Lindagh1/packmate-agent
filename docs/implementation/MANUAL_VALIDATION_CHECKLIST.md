@@ -192,6 +192,16 @@ logs or screenshots.
 
 ---
 
+## Lab automation (2026-07-22)
+
+| Check | Status |
+|-------|--------|
+| `make preflight` / `bootstrap` / `verify` | Use after Modules 2–4 |
+| Custom model endpoint | ClickOps by default — see bootstrap MANUAL STEP |
+| Pipeline `packmate-ci` | Start from UI; do not auto-promote backend |
+| Argo CD | Requires OpenShift GitOps — else `GITOPS_OPERATOR_REQUIRED` |
+| Screenshots | Placeholders in `PARTICIPANT_GUIDE.md` |
+
 ## Sign-off
 
 | Area | Status |
@@ -200,3 +210,5 @@ logs or screenshots.
 | Playground session | `MANUAL_REQUIRED` |
 | MCP ConfigMap registration | Applied on this cluster (instructor/admin) — still verify in UI |
 | Public Route automated performance | See `CLUSTER_DEPLOYMENT_REPORT.md` |
+| PipelineRun validation | `MANUAL_REQUIRED` (UI Start) — do not replace live backend |
+| Argo CD Sync | `GITOPS_OPERATOR_REQUIRED` on reference sandbox |
