@@ -1,0 +1,267 @@
+# Lab-facing Tekton Pipeline: packmate-ci
+# Participant: OpenShift Console → Pipelines → packmate-ci → Start
+# Visual path: clone → test → ai-quality-gate → build-backend → publish-result
+# Namespace-scoped only. Does not deploy production.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: packmate-pipeline
+  labels:
+    app.kubernetes.io/part-of: packmate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: packmate-pipeline
+  labels:
+    app.kubernetes.io/part-of: packmate
+rules:
+  - apiGroups: ["build.openshift.io"]
+    resources: ["buildconfigs", "builds"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["image.openshift.io"]
+    resources: ["imagestreams", "imagestreamtags", "imagestreamimages"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: packmate-pipeline
+  labels:
+    app.kubernetes.io/part-of: packmate
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: packmate-pipeline
+subjects:
+  - kind: ServiceAccount
+    name: packmate-pipeline
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: packmate-ci
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: lab-pipeline
+spec:
+  description: >
+    Packmate lab CI — clone, backend tests, deterministic AI quality gate,
+    validate manifests, build backend via BuildConfig, publish digest.
+  taskRunTemplate:
+    serviceAccountName: packmate-pipeline
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/Lindagh1/packmate-agent.git
+    - name: git-revision
+      type: string
+      default: packmate-v2
+    - name: quality-threshold
+      type: string
+      default: "0.90"
+  workspaces:
+    - name: source
+  tasks:
+    - name: clone
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+      workspaces:
+        - name: source
+          workspace: source
+      taskSpec:
+        params:
+          - name: url
+          - name: revision
+        workspaces:
+          - name: source
+        steps:
+          - name: clone
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            workingDir: $(workspaces.source.path)
+            env:
+              - name: URL
+                value: $(params.url)
+              - name: REVISION
+                value: $(params.revision)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              microdnf -y install git tar gzip findutils >/dev/null
+              find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+              git clone --depth 1 --branch "${REVISION}" "${URL}" repo
+              shopt -s dotglob nullglob
+              mv repo/* .
+              rm -rf repo
+              test -f backend/requirements-dev.txt
+
+    - name: test
+      runAfter: [clone]
+      workspaces:
+        - name: source
+          workspace: source
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: backend-pytest
+            image: registry.access.redhat.com/ubi9/python-312:1-1764289472
+            workingDir: $(workspaces.source.path)/backend
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python -m venv /tmp/venv
+              # shellcheck disable=SC1091
+              source /tmp/venv/bin/activate
+              pip install -q -r requirements-dev.txt
+              pytest -q --maxfail=1
+              echo "BACKEND_TESTS_OK"
+
+    - name: ai-quality-gate
+      runAfter: [test]
+      params:
+        - name: threshold
+          value: $(params.quality-threshold)
+      workspaces:
+        - name: source
+          workspace: source
+      taskSpec:
+        params:
+          - name: threshold
+        workspaces:
+          - name: source
+        results:
+          - name: score
+          - name: status
+          - name: scenarios
+        steps:
+          - name: gate
+            image: registry.access.redhat.com/ubi9/python-312:1-1764289472
+            workingDir: $(workspaces.source.path)/backend
+            env:
+              - name: THRESHOLD
+                value: $(params.threshold)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python -m venv /tmp/venv
+              # shellcheck disable=SC1091
+              source /tmp/venv/bin/activate
+              pip install -q -r requirements-dev.txt
+              set +e
+              OUT="$(python -m evals.runner --mode deterministic --threshold "${THRESHOLD}" 2>&1)"
+              RC=$?
+              set -e
+              echo "${OUT}"
+              SCORE="$(echo "${OUT}" | grep -Eo '0\.[0-9]+' | head -1 || true)"
+              SCEN="$(echo "${OUT}" | grep -Eo '[0-9]+' | head -1 || true)"
+              [[ -n "${SCORE}" ]] || SCORE="0"
+              [[ -n "${SCEN}" ]] || SCEN="0"
+              if [[ "${RC}" -eq 0 ]]; then STATUS=PASS; else STATUS=FAIL; fi
+              printf '%s' "${SCORE}" > "$(results.score.path)"
+              printf '%s' "${STATUS}" > "$(results.status.path)"
+              printf '%s' "${SCEN}" > "$(results.scenarios.path)"
+              echo "AI_QUALITY_GATE status=${STATUS} score=${SCORE} threshold=${THRESHOLD}"
+              [[ "${STATUS}" == "PASS" ]]
+
+    - name: validate-manifests
+      runAfter: [ai-quality-gate]
+      workspaces:
+        - name: source
+          workspace: source
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: check
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            workingDir: $(workspaces.source.path)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              test -f deploy/overlays/dev/kustomization.yaml
+              if grep -R --include='*.yaml' -nE 'image:.*:latest([[:space:]]|$)' deploy/overlays/dev; then
+                echo "FORBIDDEN :latest tag in overlay"
+                exit 1
+              fi
+              echo "MANIFESTS_OK"
+
+    - name: build-backend
+      runAfter: [validate-manifests]
+      workspaces:
+        - name: source
+          workspace: source
+      taskSpec:
+        workspaces:
+          - name: source
+        results:
+          - name: imagestream
+          - name: digest
+        steps:
+          - name: start-build
+            image: registry.redhat.io/openshift4/ose-cli:v4.16
+            workingDir: $(workspaces.source.path)
+            env:
+              - name: NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if ! oc -n "${NAMESPACE}" get bc packmate-backend >/dev/null 2>&1; then
+                echo "BuildConfig/packmate-backend missing in ${NAMESPACE}"
+                echo "Instructor must ensure BC exists once; see docs/INSTRUCTOR_GUIDE.md"
+                exit 1
+              fi
+              BUILD="$(oc -n "${NAMESPACE}" start-build packmate-backend --from-dir=backend -o name)"
+              echo "Started ${BUILD}"
+              oc -n "${NAMESPACE}" logs -f "${BUILD}"
+              phase="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.phase}')"
+              [[ "${phase}" == "Complete" ]] || { echo "Build phase=${phase}"; exit 1; }
+              SHA="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.output.to.imageDigest}')"
+              [[ -n "${SHA}" ]] || SHA="$(oc -n "${NAMESPACE}" get is packmate-backend -o jsonpath='{.status.tags[0].items[0].image}')"
+              printf '%s' "packmate-backend" > "$(results.imagestream.path)"
+              printf '%s' "${SHA}" > "$(results.digest.path)"
+              echo "PUBLISH imagestream=packmate-backend digest=${SHA}"
+
+    - name: publish-result
+      runAfter: [build-backend]
+      params:
+        - name: digest
+          value: $(tasks.build-backend.results.digest)
+        - name: score
+          value: $(tasks.ai-quality-gate.results.score)
+        - name: status
+          value: $(tasks.ai-quality-gate.results.status)
+        - name: scenarios
+          value: $(tasks.ai-quality-gate.results.scenarios)
+      taskSpec:
+        params:
+          - name: digest
+          - name: score
+          - name: status
+          - name: scenarios
+        steps:
+          - name: summary
+            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              cat <<EOF
+              ========== Packmate CI result ==========
+              AI quality gate: $(params.status)
+              Scenarios:       $(params.scenarios)
+              Score:           $(params.score)
+              Threshold:       0.90
+              Backend digest:  $(params.digest)
+              Promote:         scripts/promote-backend-image.sh $(params.digest)
+              ========================================
+              EOF
