@@ -1,0 +1,116 @@
+# Publish Packmate lab images to GHCR (persistent across ephemeral sandboxes).
+# Triggers: workflow_dispatch, tags lab-v*
+# Never pushes :latest. Outputs digest-pinned references in the job summary.
+name: publish-lab-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag without lab- prefix (e.g. 1.0.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "lab-v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: packmate-backend
+            context: ./backend
+            file: ./backend/Containerfile
+          - name: packmate-frontend
+            context: ./frontend
+            file: ./frontend/Containerfile
+          - name: packmate-weather-mcp
+            context: ./mcp-servers/weather
+            file: ./mcp-servers/weather/Containerfile
+          - name: packmate-baggage-policy-mcp
+            context: ./mcp-servers/baggage-policy
+            file: ./mcp-servers/baggage-policy/Containerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            V="lab-v${{ inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/${{ matrix.name }}:${{ steps.ver.outputs.version }}
+          provenance: false
+
+      - name: Summary line
+        run: |
+          DIGEST="${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/${{ matrix.name }}:${{ steps.ver.outputs.version }}@${DIGEST}"
+          echo "### ${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${REF}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "PACKMATE_IMAGE_${{ matrix.name }}=${REF}" >> "$GITHUB_ENV"
+          echo "${REF}" > "/tmp/${{ matrix.name }}.ref"
+
+      - name: Upload ref artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-ref-${{ matrix.name }}
+          path: /tmp/${{ matrix.name }}.ref
+
+  summarize:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download refs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: image-ref-*
+          merge-multiple: true
+          path: refs
+      - name: Final summary
+        run: |
+          {
+            echo "## Packmate lab images (no latest)"
+            echo
+            echo "Make packages public once (GitHub → Packages → each image → Package settings → Change visibility → Public)."
+            echo
+            echo '```'
+            cat refs/*.ref
+            echo '```'
+            echo
+            echo "Copy into config/sandbox.env as BACKEND_IMAGE / FRONTEND_IMAGE / WEATHER_MCP_IMAGE / BAGGAGE_POLICY_MCP_IMAGE."
+          } >> "$GITHUB_STEP_SUMMARY"

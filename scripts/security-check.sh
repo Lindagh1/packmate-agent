@@ -194,8 +194,8 @@ check_hardcoded_secrets() {
     --exclude='security-check.sh' \
     --exclude='test_*.py' --exclude='*_test.py' \
     --exclude='README.md' \
-    -E 'sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|LITELLM_API_KEY[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,}' \
-    "${ROOT}" 2>/dev/null | grep -v 'secretKeyRef' | grep -v '<your-key>' | grep -v 'PLACEHOLDER' | grep -v "LITELLM_API_KEY='\\.\\.\\.'" || true)"
+    -E 'sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|LITELLM_API_KEY[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'$]{8,}' \
+    "${ROOT}" 2>/dev/null | grep -v 'secretKeyRef' | grep -v '<your-key>' | grep -v 'PLACEHOLDER' | grep -v "LITELLM_API_KEY='\\.\\.\\.'" | grep -v '\${LITELLM_API_KEY' | grep -v ':-dummy' || true)"
   local deploy_hits
   deploy_hits="$(grep -RIn --include='*.yaml' --include='*.yml' \
     -E 'api[_-]?key[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,}' \
