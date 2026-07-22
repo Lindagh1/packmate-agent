@@ -3,4 +3,5 @@ kind: ConfigMap
 metadata:
   name: packmate-config
 data:
-  PACKMATE_VERSION: dev
+  PACKMATE_VERSION: lab-v1.0.0
+  PACKMATE_GITOPS_DEMO: "outofsync-demo"
