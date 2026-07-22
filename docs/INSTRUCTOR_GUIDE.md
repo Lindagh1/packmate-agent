@@ -129,3 +129,13 @@ Fall back to screenshots + local `make test` / Compose. Do not invent “validat
 | Instructor image publish (once) | 30–60 min |
 | Instructor cluster smoke | 30 min |
 | Participant lab | 120 min |
+
+## Participant handout (Word)
+
+Participant Markdown source (historical lab *style*, Packmate v2 *content*):
+
+`docs/PARTICIPANT_GUIDE.md`
+
+Assembly instructions for editors (cover, TOC, captions, page breaks — **no** auto-generated DOCX):
+
+`docs/DOCX_ASSEMBLY_PLAN.md`

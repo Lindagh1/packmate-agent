@@ -18,14 +18,17 @@ metadata:
     app.kubernetes.io/part-of: packmate
 rules:
   - apiGroups: ["build.openshift.io"]
-    resources: ["buildconfigs", "builds"]
+    resources: ["buildconfigs", "builds", "buildconfigs/instantiate", "buildconfigs/instantiatebinary"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["image.openshift.io"]
     resources: ["imagestreams", "imagestreamtags", "imagestreamimages"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
     resources: ["pods", "pods/log", "configmaps"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
