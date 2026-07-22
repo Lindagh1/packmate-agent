@@ -46,15 +46,27 @@ fi
 # Participant namespace
 if oc get project "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
   pass "Data Science Project ${PACKMATE_NAMESPACE} exists"
+elif [[ "${ALLOW_CREATE_NAMESPACE:-false}" == "true" ]]; then
+  warn "Namespace ${PACKMATE_NAMESPACE} absent — bootstrap will create it (ALLOW_CREATE_NAMESPACE=true)"
 else
   block "MANUAL STEP REQUIRED: Create the Data Science Project from the OpenShift AI dashboard (${PACKMATE_NAMESPACE})"
 fi
 
-# Namespace RBAC smoke
-if oc auth can-i create deployments -n "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
-  pass "User can create Deployments in ${PACKMATE_NAMESPACE}"
+# Namespace RBAC smoke (skip hard fail when namespace will be created by bootstrap)
+if oc get project "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
+  if oc auth can-i create deployments -n "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
+    pass "User can create Deployments in ${PACKMATE_NAMESPACE}"
+  else
+    block "Insufficient rights in ${PACKMATE_NAMESPACE} (cannot create Deployments)"
+  fi
+elif [[ "${ALLOW_CREATE_NAMESPACE:-false}" == "true" ]]; then
+  if oc auth can-i create projects >/dev/null 2>&1 || oc auth can-i create namespaces >/dev/null 2>&1; then
+    pass "User can create projects/namespaces (bootstrap will create ${PACKMATE_NAMESPACE})"
+  else
+    block "ALLOW_CREATE_NAMESPACE=true but user cannot create projects"
+  fi
 else
-  block "Insufficient rights in ${PACKMATE_NAMESPACE} (cannot create Deployments)"
+  block "Insufficient rights in ${PACKMATE_NAMESPACE} (namespace missing)"
 fi
 
 # Model

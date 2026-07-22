@@ -48,3 +48,11 @@ Physical model remains in `my-first-model`.
 - GHCR images persist only after the GitHub Actions workflow is executed and packages made public
 - Argo CD Module 10 needs OpenShift GitOps Operator
 - EvalHub / Rollouts not part of the mandatory path
+
+## Release validation (2026-07-22)
+
+- Tag **lab-v1.0.0**; GHCR four packages public; digests in `docs/REPRODUCE_SANDBOX.md`.
+- Repro namespace **packmate-repro** from GHCR + shared model; verify OK.
+- PipelineRun **packmate-ci-validate-20260722-123626** Succeeded; QG 0.9559; backend digest `sha256:d04468d3…` not promoted to live Deployments.
+- OpenShift GitOps **installed**; Argo Application `packmate-lab` → `packmate-repro`.
+- `packmate-lab` workloads preserved; `my-first-model` untouched.

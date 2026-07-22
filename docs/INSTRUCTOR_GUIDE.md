@@ -10,7 +10,7 @@ Your prep: **45–90 minutes** on a ready cluster (longer the first time you pub
 | OpenShift AI (`rhods-operator` 3.4.x) | **Required** | Blocks lab if absent |
 | Model `llama-32-3b-instruct` in `my-first-model` | **Required** | Shared; never redeploy for Packmate |
 | OpenShift Pipelines 1.22.x | **Required for Module 9** | Warn + screenshots if absent |
-| OpenShift GitOps / Argo CD | **Optional Module 10** | `GITOPS_OPERATOR_REQUIRED` if absent |
+| OpenShift GitOps / Argo CD | **Optional Module 10** (validated install on 2026-07-22 sandbox) | `GITOPS_OPERATOR_REQUIRED` if absent |
 | Argo Rollouts | Optional annex | Not in main path |
 | EvalHub instance | Optional annex | `EVALHUB_OPTIONAL_NOT_CONFIGURED` |
 

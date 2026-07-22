@@ -1,5 +1,6 @@
 # Argo CD Application for Packmate Lab — MANUAL sync for first-touch demo.
 # prune=false, selfHeal=false. No automatic destructive sync.
+# Placeholders: __GIT_REPO_URL__ __GIT_REVISION__ __PACKMATE_NAMESPACE__
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -15,6 +16,9 @@ spec:
     repoURL: __GIT_REPO_URL__
     targetRevision: __GIT_REVISION__
     path: deploy/overlays/dev
+    kustomize:
+      # Force destination namespace so overlay's packmate-lab default does not leak.
+      namespace: __PACKMATE_NAMESPACE__
   destination:
     server: https://kubernetes.default.svc
     namespace: __PACKMATE_NAMESPACE__

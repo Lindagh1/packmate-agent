@@ -2,6 +2,13 @@
 
 AI-powered travel packing assistant for an **OpenShift AI first-touch lab** (~120 minutes), with a short visual intro to **OpenShift Pipelines** and **Argo CD**.
 
+## Release status
+
+- Tag: **`lab-v1.0.0`**
+- Images: public GHCR digests (see `docs/REPRODUCE_SANDBOX.md`)
+- Quality gate: **0.9559**
+- Validated PipelineRun + GitOps on OpenTLC sandbox (details in docs)
+
 ## Lab path (participants)
 
 1. Create a Data Science Project (ClickOps)

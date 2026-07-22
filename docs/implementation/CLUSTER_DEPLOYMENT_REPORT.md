@@ -267,3 +267,11 @@ Ne touche pas `my-first-model`, n’installe/désinstalle aucun Operator, et dem
 | GHCR publish workflow | Present; images **not** published until workflow runs |
 | Custom model endpoint | Default ClickOps (`CREATE_MODEL_CUSTOM_ENDPOINT=false`) |
 | EvalHub / Rollouts | Optional / unavailable — do not fail verify |
+
+## Release PipelineRun (2026-07-22)
+
+- Name: `packmate-ci-validate-20260722-123626` in `packmate-repro`
+- Result: **Succeeded**
+- AI quality gate: score **0.9559**, scenarios **16**, PASS
+- Backend ImageStreamTag digest: `sha256:d04468d34593a2d9c76f30a318ace2fcbc97e9c4d483b8271497e1dd59a2ca84`
+- Live `packmate-lab` / `packmate-repro` Deployments were **not** auto-updated from this digest

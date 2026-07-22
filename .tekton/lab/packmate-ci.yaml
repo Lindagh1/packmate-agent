@@ -84,23 +84,25 @@ spec:
           - name: source
         steps:
           - name: clone
-            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
             workingDir: $(workspaces.source.path)
             env:
               - name: URL
                 value: $(params.url)
               - name: REVISION
                 value: $(params.revision)
+              - name: HOME
+                value: /workspace
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              microdnf -y install git tar gzip findutils >/dev/null
+              # Avoid microdnf under restricted SCC: fetch branch tarball via curl.
               find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-              git clone --depth 1 --branch "${REVISION}" "${URL}" repo
-              shopt -s dotglob nullglob
-              mv repo/* .
-              rm -rf repo
+              ARCHIVE_URL="${URL%.git}/archive/refs/heads/${REVISION}.tar.gz"
+              curl -fsSL -o /tmp/packmate-src.tgz "${ARCHIVE_URL}"
+              tar -xzf /tmp/packmate-src.tgz --strip-components=1
               test -f backend/requirements-dev.txt
+              echo "CLONE_OK revision=${REVISION}"
 
     - name: test
       runAfter: [clone]
@@ -112,7 +114,7 @@ spec:
           - name: source
         steps:
           - name: backend-pytest
-            image: registry.access.redhat.com/ubi9/python-312:1-1764289472
+            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
             workingDir: $(workspaces.source.path)/backend
             script: |
               #!/usr/bin/env bash
@@ -143,7 +145,7 @@ spec:
           - name: scenarios
         steps:
           - name: gate
-            image: registry.access.redhat.com/ubi9/python-312:1-1764289472
+            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
             workingDir: $(workspaces.source.path)/backend
             env:
               - name: THRESHOLD
@@ -181,7 +183,7 @@ spec:
           - name: source
         steps:
           - name: check
-            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
             workingDir: $(workspaces.source.path)
             script: |
               #!/usr/bin/env bash
@@ -206,7 +208,7 @@ spec:
           - name: digest
         steps:
           - name: start-build
-            image: registry.redhat.io/openshift4/ose-cli:v4.16
+            image: image-registry.openshift-image-registry.svc:5000/openshift/cli@sha256:dd7dab5b6ec92b6eecefec17f84bb3df525692f39a44f3d8c22b4469e420f0f3
             workingDir: $(workspaces.source.path)
             env:
               - name: NAMESPACE
@@ -223,11 +225,20 @@ spec:
               fi
               BUILD="$(oc -n "${NAMESPACE}" start-build packmate-backend --from-dir=backend -o name)"
               echo "Started ${BUILD}"
-              oc -n "${NAMESPACE}" logs -f "${BUILD}"
+              # Follow logs but do not treat log stream end as build completion.
+              oc -n "${NAMESPACE}" logs -f "${BUILD}" || true
+              for _ in $(seq 1 180); do
+                phase="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.phase}')"
+                case "${phase}" in
+                  Complete|Failed|Error|Cancelled) break ;;
+                esac
+                sleep 2
+              done
               phase="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.phase}')"
               [[ "${phase}" == "Complete" ]] || { echo "Build phase=${phase}"; exit 1; }
               SHA="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.output.to.imageDigest}')"
-              [[ -n "${SHA}" ]] || SHA="$(oc -n "${NAMESPACE}" get is packmate-backend -o jsonpath='{.status.tags[0].items[0].image}')"
+              [[ -n "${SHA}" ]] || SHA="$(oc -n "${NAMESPACE}" get is packmate-backend -o jsonpath='{.status.tags[?(@.tag=="pipeline")].items[0].image}')"
+              [[ -n "${SHA}" ]] || { echo "Unable to resolve image digest"; exit 1; }
               printf '%s' "packmate-backend" > "$(results.imagestream.path)"
               printf '%s' "${SHA}" > "$(results.digest.path)"
               echo "PUBLISH imagestream=packmate-backend digest=${SHA}"
@@ -251,7 +262,7 @@ spec:
           - name: scenarios
         steps:
           - name: summary
-            image: registry.access.redhat.com/ubi9/ubi-minimal:9.4
+            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
             script: |
               #!/usr/bin/env bash
               set -euo pipefail

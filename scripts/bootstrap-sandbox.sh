@@ -35,6 +35,11 @@ if ! oc get project "${PACKMATE_NAMESPACE}" >/dev/null 2>&1; then
   if [[ "${ALLOW_CREATE_NAMESPACE}" == "true" ]]; then
     log "ALLOW_CREATE_NAMESPACE=true — creating project ${PACKMATE_NAMESPACE}"
     oc new-project "${PACKMATE_NAMESPACE}" --display-name="Packmate Lab" >/dev/null
+    # DSP-compatible labels so the project is discoverable in OpenShift AI
+    oc label namespace "${PACKMATE_NAMESPACE}" \
+      opendatahub.io/dashboard=true \
+      modelmesh-enabled=false \
+      --overwrite >/dev/null
   else
     cat <<EOF
 MANUAL STEP REQUIRED:
@@ -68,22 +73,65 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 oc kustomize "${ROOT}/deploy/overlays/dev" > "${TMP}/all.yaml"
 
-# Optional image overrides from sandbox.env (digest-pinned)
+# Retarget overlay namespace (dev defaults to packmate-lab) without touching packmate-lab live.
+python3 - <<'PY' "${TMP}/all.yaml" "${PACKMATE_NAMESPACE}"
+import sys
+from pathlib import Path
+try:
+  import yaml
+except ImportError:
+  text = Path(sys.argv[1]).read_text().replace("namespace: packmate-lab", f"namespace: {sys.argv[2]}")
+  Path(sys.argv[1]).write_text(text)
+  raise SystemExit(0)
+ns = sys.argv[2]
+docs = list(yaml.safe_load_all(Path(sys.argv[1]).read_text()))
+out = []
+for d in docs:
+  if not d:
+    continue
+  md = d.setdefault("metadata", {})
+  if md.get("namespace") == "packmate-lab" or ns != "packmate-lab":
+    md["namespace"] = ns
+  out.append(d)
+Path(sys.argv[1]).write_text(yaml.safe_dump_all(out, sort_keys=False))
+PY
+
+# Optional image overrides from sandbox.env (digest-pinned) — YAML-aware
 python3 - <<'PY' "${TMP}/all.yaml" \
   "${BACKEND_IMAGE:-}" "${FRONTEND_IMAGE:-}" "${WEATHER_MCP_IMAGE:-}" "${BAGGAGE_POLICY_MCP_IMAGE:-}"
-import re, sys
-path, be, fe, wx, bg = sys.argv[1:6]
-text = open(path).read()
-pairs = []
-if be: pairs += [('name: backend', be), ('name: packmate-backend', be)]
-if fe: pairs += [('name: frontend', fe), ('name: packmate-frontend', fe)]
-if wx: pairs += [('name: weather-mcp', wx)]
-if bg: pairs += [('name: baggage-policy-mcp', bg)]
-for marker, image in pairs:
-  # Replace the first image: line after a container name match in the file sections
-  pattern = rf'({re.escape(marker)}\n(?:.*\n){{0,12}}?        image: )([^\n]+)'
-  text, _ = re.subn(pattern, rf'\g<1>{image}', text, count=1)
-open(path,'w').write(text)
+import sys
+from pathlib import Path
+try:
+  import yaml
+except ImportError:
+  raise SystemExit(0)
+path = Path(sys.argv[1])
+be, fe, wx, bg = sys.argv[2:6]
+# Map deployment name -> desired image
+want = {}
+if be:
+  want["packmate-backend"] = be
+if fe:
+  want["packmate-frontend"] = fe
+if wx:
+  want["weather-mcp"] = wx
+if bg:
+  want["baggage-policy-mcp"] = bg
+if not want:
+  raise SystemExit(0)
+docs = list(yaml.safe_load_all(path.read_text()))
+out = []
+for d in docs:
+  if not d:
+    continue
+  if d.get("kind") == "Deployment":
+    name = d.get("metadata", {}).get("name")
+    img = want.get(name)
+    if img:
+      for c in d.get("spec", {}).get("template", {}).get("spec", {}).get("containers", []):
+        c["image"] = img
+  out.append(d)
+path.write_text(yaml.safe_dump_all(out, sort_keys=False))
 PY
 
 # Split: apply non-Deployment first, then create-or-set-image Deployments
@@ -125,13 +173,13 @@ for doc in yaml.safe_load_all(open(sys.argv[1])):
   containers = doc['spec']['template']['spec']['containers']
   exists = subprocess.run(['oc','-n',ns,'get','deploy',name], capture_output=True).returncode == 0
   if not exists:
-    subprocess.check_call(['oc','apply','-f','-'], input=yaml.safe_dump(doc).encode())
+    subprocess.run(['oc','apply','-f','-'], input=yaml.safe_dump(doc).encode(), check=True)
     print(f'    created deploy/{name}')
     continue
   for c in containers:
     img = c['image']
     cname = c['name']
-    subprocess.check_call(['oc','-n',ns,'set','image',f'deploy/{name}',f'{cname}={img}'])
+    subprocess.run(['oc','-n',ns,'set','image',f'deploy/{name}',f'{cname}={img}'], check=True)
     print(f'    set image deploy/{name} {cname}')
 PY
 else
@@ -237,6 +285,41 @@ if [[ "${CREATE_PIPELINE}" == "true" ]]; then
   if packmate_api_has '^pipelines[[:space:]].*tekton\.dev'; then
     log "==> Applying lab Pipeline packmate-ci"
     oc apply -n "${PACKMATE_NAMESPACE}" -f "${ROOT}/.tekton/lab/packmate-ci.yaml" >/dev/null
+    # Ensure BuildConfig + ImageStream exist for the build-backend task (namespace-scoped).
+    if ! oc -n "${PACKMATE_NAMESPACE}" get bc packmate-backend >/dev/null 2>&1; then
+      oc -n "${PACKMATE_NAMESPACE}" apply -f - <<EOF
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/part-of: packmate
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/part-of: packmate
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: packmate-backend:pipeline
+  runPolicy: Serial
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Containerfile
+EOF
+      log "    BuildConfig/ImageStream packmate-backend created"
+    fi
     log "    Pipeline/packmate-ci ready — Start from OpenShift Pipelines UI"
   else
     log "    WARNING: Pipelines API absent — skip CREATE_PIPELINE"

@@ -43,3 +43,18 @@ oc apply -f argocd/   # after substituting repo URL / revision / namespace
 
 Document the module as a walkthrough using screenshots from a prepared cluster,
 and continue the lab with Modules 1–9 (OpenShift AI + Pipelines).
+
+## Sandbox validation note (2026-07-22)
+
+On the OpenTLC sandbox used for release validation, Red Hat OpenShift GitOps was
+installed automatically after prechecks (admin user, ephemeral `*.sandbox*.opentlc.com`
+API, PackageManifest `openshift-gitops-operator`, no prior Argo CRDs).
+
+- Subscription namespace: `openshift-gitops-operator`
+- Channel: PackageManifest `defaultChannel` = `latest`
+- CSV: `openshift-gitops-operator.v1.21.1` **Succeeded**
+- Instance namespace: `openshift-gitops`
+
+A conflicting Manual InstallPlan in `openshift-operators` that bundled Service Mesh /
+Pipelines upgrades was **not** approved. GitOps was installed via a dedicated
+Operator namespace instead.
