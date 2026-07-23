@@ -1,9 +1,10 @@
 # Lab acceptance report — Packmate v2
 
-**Date:** 2026-07-22  
-**Branch:** `packmate-v2`  
-**Commit tested (pre-acceptance docs WIP):** `b4a170e` (+ local doc/RBAC fixes committed with this report)  
-**Verdict:** **LAB_READY_WITH_MANUAL_VISUAL_CHECKS**
+**Date:** 2026-07-22 (DEV path acceptance run); **DEV→PROD addendum added 2026-07-23** (see § 12)
+**Branch:** `packmate-v2`
+**Commit tested (pre-acceptance docs WIP):** `b4a170e` (+ local doc/RBAC fixes committed with this report)
+**Verdict (2026-07-22, DEV path only):** **LAB_READY_WITH_MANUAL_VISUAL_CHECKS**
+**Verdict (2026-07-23, DEV→PROD scope):** **PROD PROMOTION PATH IMPLEMENTED, PENDING LIVE-CLUSTER RE-VALIDATION** — see § 12 for exactly what was and was not re-checked in this pass.
 
 ---
 
@@ -88,7 +89,7 @@ Anonymous `skopeo inspect` on all four: **OK**.
 | Live Deployment auto-replaced? | **No** — still GHCR `c10fbeb6…` |
 | `packmate-lab` backend | Unchanged (internal digest `c057f9f1…`) |
 
-**Minimal fix applied:** Role `packmate-pipeline` now includes `buildconfigs/instantiate` and `buildconfigs/instantiatebinary` (+ imagestream update verbs). Demonstrated blocker for Module 9 on a fresh namespace.
+**Minimal fix applied:** Role `packmate-pipeline` now includes `buildconfigs/instantiate` and `buildconfigs/instantiatebinary` (+ imagestream update verbs). Demonstrated blocker for the Pipeline module (Module 9 in the pre-restructure guide; Module C — CI in the current `docs/PARTICIPANT_GUIDE.md`) on a fresh namespace.
 
 ---
 
@@ -169,8 +170,33 @@ Anonymous `skopeo inspect` on all four: **OK**.
 
 ---
 
-## 11. Final verdict
+## 11. Final verdict (2026-07-22, DEV path)
 
 **LAB_READY_WITH_MANUAL_VISUAL_CHECKS**
 
-Technical path (images, bootstrap, verify, SSE, PipelineRun, Argo Sync, tests, quality gate) validated on a fresh GHCR-only namespace. Remaining gaps are intentional ClickOps visual checks in the participant guide.
+Technical path (images, bootstrap, verify, SSE, PipelineRun, Argo Sync, tests, quality gate) validated on a fresh GHCR-only namespace. Remaining gaps are intentional ClickOps visual checks in the participant guide. This verdict covers **Modules A–C** of the current `docs/PARTICIPANT_GUIDE.md` (OpenShift AI, Development, CI); it predates the `packmate-prod` split.
+
+---
+
+## 12. DEV→PROD addendum (2026-07-23)
+
+The participant guide was restructured into Modules A–F (OpenShift AI, Development, CI, **Promotion**, **Production**, **Rollback**) and the following automation was added since § 1–11 above were written: `scripts/prepare-prod.sh`, `scripts/promote-backend-image.sh --create-pr`, `scripts/rollback-prod-image.sh --create-pr`, `scripts/configure-argocd-lab-rbac.sh`, `scripts/verify-prod.sh`, `scripts/verify-gitops.sh`, `scripts/validate-prod-overlay.sh`, `argocd/appproject-packmate.yaml`, `argocd/application-packmate-prod.yaml`.
+
+**Re-checked in this documentation pass (2026-07-23, offline/local — no live cluster in this environment):**
+
+| Check | Result |
+|---|---|
+| `make validate-prod` (offline render of `deploy/overlays/prod`) | **Passed** — no Notebook/Pipeline/PipelineRun/Workbench kinds, no `:latest`, no `packmate-lab` references, `packmate-prod-llm` secretKeyRef present, exactly 4 Deployments, all digest-pinned |
+| Backend pytest | **125 passed** (unchanged from § 7) |
+| Deterministic AI quality gate | **score 0.9559, PASS** (threshold 0.90; unchanged from § 7) |
+| `scripts/security-check.sh` | **All checks passed** |
+| Frontend (`npm ci && npm run test -- --run`) / MCP suites | **Not re-run in this pass** — carried forward from § 7 (26 frontend tests, 6 Weather, 9 Baggage); re-run before the next class if the frontend or MCP servers changed |
+
+**Not re-checked in this pass — genuinely pending a live cluster:**
+
+- End-to-end `make bootstrap` on a fresh sandbox confirming `packmate-prod` namespace/Secret/RBAC/Argo objects are created as described in `prepare-prod.sh`.
+- A live PipelineRun → `promote-backend-image.sh --pipelinerun … --create-pr` → PR review/merge → Argo CD `packmate-prod` OutOfSync → Sync → Synced/Healthy → PROD Route smoke cycle (Modules C–E).
+- A live `rollback-prod-image.sh --create-pr` → merge → Sync cycle (Module F).
+- SSO group/`promoter`-role propagation (log out/in) on a real Argo CD instance with `spec.rbac.scopes` patched by `configure-argocd-lab-rbac.sh`.
+
+**Recommendation:** run the § 1–10 acceptance procedure again end-to-end on a fresh sandbox, extended through Modules D–F, before the first graded DEV→PROD class, and log the result either as a new dated section here or as a fresh acceptance report. Until then, treat the PROD promotion/rollback/Argo-RBAC path as **implemented and offline-validated**, not yet **live-cluster acceptance-tested**.

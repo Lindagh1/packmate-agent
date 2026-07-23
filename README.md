@@ -1,73 +1,80 @@
 # Packmate v2
 
-AI-powered travel packing assistant for an **OpenShift AI first-touch lab** (~120 minutes), with a short visual intro to **OpenShift Pipelines** and **Argo CD**.
+AI-powered travel packing assistant for an **OpenShift AI DEV → PROD lab** (~150 minutes): prototype in the Gen AI Playground, run it as a FastAPI + React app in **DEV** (`packmate-lab`), validate it with a Tekton Pipeline, **promote** it to **PROD** (`packmate-prod`) through a reviewed pull request, and deploy it with Argo CD.
 
 ## Release status
 
 - Tag: **`lab-v1.0.0`**
 - Images: public GHCR digests (see `docs/REPRODUCE_SANDBOX.md`)
 - Quality gate: **0.9559**
-- Validated PipelineRun + GitOps on OpenTLC sandbox (details in docs)
+- Validated PipelineRun + GitOps on OpenTLC sandbox (DEV path; see docs for the DEV/PROD split status)
 
-## Lab path (participants)
+## DEV → PROD narrative
 
-1. Create a Data Science Project (ClickOps)
-2. Create a code-server Workbench (ClickOps)
-3. Clone + `make preflight && make bootstrap && make verify`
-4. Explore AI asset endpoints + Gen AI Playground (system prompt + MCP)
-5. Export / compare with the FastAPI app
-6. Use the Route UI
-7. Start Pipeline `packmate-ci` (quality gate)
-8. Optional: Argo CD Sync
+1. **DEV** (`packmate-lab`): create a Data Science Project + Workbench, `make bootstrap`, prototype in the Gen AI Playground (model + system prompt + MCP), then use the same idea industrialized on the DEV Route.
+2. **CI**: start Pipeline `packmate-ci` (tests → AI quality gate ≥0.90 → build backend). It only ever validates and builds in `packmate-lab` — it never deploys anywhere.
+3. **Promote**: `scripts/promote-backend-image.sh --create-pr` turns a PASSing candidate digest into a pull request that touches only `deploy/overlays/prod/kustomization.yaml`. Review it, then merge.
+4. **PROD** (`packmate-prod`): merging makes Argo CD Application `packmate-prod` **OutOfSync**. Sync it manually (OpenShift SSO, Prune disabled) to deploy. `packmate-prod` has no Workbench, Pipeline, Playground, or custom model endpoint — runtime only.
+5. **Rollback**: `scripts/rollback-prod-image.sh --create-pr` opens a pull request restoring the previous digest — no rebuild, no direct cluster edit.
 
-Guides: [`docs/PARTICIPANT_GUIDE.md`](docs/PARTICIPANT_GUIDE.md) · [`docs/INSTRUCTOR_GUIDE.md`](docs/INSTRUCTOR_GUIDE.md) · [`docs/REPRODUCE_SANDBOX.md`](docs/REPRODUCE_SANDBOX.md) · Word assembly: [`docs/DOCX_ASSEMBLY_PLAN.md`](docs/DOCX_ASSEMBLY_PLAN.md)
+`packmate-lab` is **DEV**. It is never production. Every change that reaches `packmate-prod` goes through Git (pull request), never a direct `oc apply`.
+
+Guides: [`docs/PARTICIPANT_GUIDE.md`](docs/PARTICIPANT_GUIDE.md) (Modules A–F) · [`docs/INSTRUCTOR_GUIDE.md`](docs/INSTRUCTOR_GUIDE.md) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/REPRODUCE_SANDBOX.md`](docs/REPRODUCE_SANDBOX.md) · [`docs/OPERATIONS.md`](docs/OPERATIONS.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) · Word assembly: [`docs/DOCX_ASSEMBLY_PLAN.md`](docs/DOCX_ASSEMBLY_PLAN.md)
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-  subgraph clickops [Participant ClickOps]
+  subgraph dev [DEV — packmate-lab]
     DSP[Data Science Project]
     WB[Workbench code-server]
     PG[Gen AI Playground]
-    PipeUI[Pipelines UI]
-    ArgoUI[Argo CD Sync]
+    PipeUI[Pipeline packmate-ci]
+    AppDev[Backend + Frontend + MCP]
   end
-  subgraph boot [make bootstrap]
-    MCP[Weather + Baggage MCP]
-    BE[FastAPI backend]
-    FE[React frontend]
+  subgraph promo [Promotion — Git]
+    PR[Pull request: prod overlay digest only]
+  end
+  subgraph prod [PROD — packmate-prod]
+    ArgoUI[Argo CD Sync]
+    AppProd[Backend + Frontend + MCP]
   end
   subgraph platform [Platform prerequisites]
     OAI[OpenShift AI]
     Model[llama-32-3b-instruct in my-first-model]
     Img[Prebuilt images GHCR/Quay]
   end
-  DSP --> WB --> boot
+  DSP --> WB --> AppDev
   Model --> PG
-  MCP --> PG
-  boot --> FE
-  FE --> BE
-  BE --> Model
-  BE --> MCP
-  PipeUI --> QG[AI quality gate]
-  Img --> boot
+  Model --> AppDev
+  Model --> AppProd
+  Img --> AppDev
+  Img --> AppProd
+  PipeUI -->|"PASS quality gate"| PR
+  PR -->|merge| ArgoUI
+  ArgoUI -->|Sync, prune off| AppProd
 ```
 
-**Playground** = model + system prompt + MCP.
-**FastAPI app** = same idea with validation, MCP cache, bounded LLM retry, SSE streaming, metrics, NetworkPolicies.
+**Playground** = model + system prompt + MCP, in DEV only.
+**FastAPI app** = same idea with validation, MCP cache, bounded LLM retry, SSE streaming, metrics, NetworkPolicies — running in DEV and, once promoted, in PROD.
 
 ## Makefile
 
 ```bash
 cp config/sandbox.env.example config/sandbox.env
-# set digest-pinned *_IMAGE values from instructor
-make preflight
-make bootstrap
-make verify
-make test
-make render
-make cleanup   # interactive
+# set digest-pinned *_IMAGE and LLM_* values from instructor
+make preflight              # cluster + image checks
+make bootstrap              # DEV workloads + AI assets + PROD prep (no PROD workload apply)
+make verify                 # DEV readiness
+make prepare-prod           # re-run PROD prep standalone (idempotent)
+make configure-argocd-rbac  # SSO group + AppProject promoter role
+make verify-prod            # PROD readiness after an Argo CD Sync
+make verify-gitops          # AppProject/Application/RBAC checks
+make validate-prod          # static PROD overlay checks (offline)
+make test                   # unit tests + quality gate + security-check
+make render                 # render Kustomize DEV + PROD overlays
+make promote                # scripts/promote-backend-image.sh (see --help)
+make cleanup                # interactive, DEV (packmate-lab) only
 ```
 
 ## Local development (optional)
@@ -80,10 +87,12 @@ cd ../frontend && npm ci && npm run test -- --run
 
 ## Important constraints
 
-- Do **not** redeploy the shared Llama model
+- Do **not** redeploy the shared Llama model, in DEV or PROD
 - Do **not** commit Secrets or `config/sandbox.env`
 - Do **not** use image tag `latest`
-- GitOps / Rollouts / EvalHub are optional extensions when Operators are missing
+- Do **not** `oc apply -k deploy/overlays/prod` directly — Argo CD Sync only
+- Do **not** push promotion/rollback branches straight to `packmate-v2` — pull request only
+- GitOps / Rollouts / EvalHub are required for the PROD modules; Rollouts / EvalHub stay optional extensions
 
 ## License
 

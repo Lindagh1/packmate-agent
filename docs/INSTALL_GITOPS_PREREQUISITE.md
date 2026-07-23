@@ -2,14 +2,17 @@
 
 `GITOPS_OPERATOR_REQUIRED`
 
-This Packmate lab treats **Argo CD as a visual introduction**. Participants never
+OpenShift GitOps is **required** for Modules D–F of the Packmate DEV→PROD lab
+(Promotion, Production, Rollback) — it is no longer just a visual add-on, since
+`packmate-prod` is deployed exclusively by Argo CD Sync. Participants never
 install Operators and never use the Argo CD admin password.
 
 ## When you need this
 
-If `make preflight` reports that the Argo CD Application CRD is absent, Module 10
-(Argo CD Sync) cannot run live. Manifests under `argocd/` still validate with
-`oc apply --dry-run=client`.
+If `make preflight` reports that the Argo CD Application CRD is absent, Modules D–F
+(promotion review, PROD Sync, rollback Sync) cannot run live. Manifests under
+`argocd/` still validate with `oc apply --dry-run=client`, and `make validate-prod`
+still checks the rendered PROD overlay offline.
 
 ## Instructor install (outside the 120-minute participant path)
 
@@ -36,13 +39,16 @@ oc apply -f argocd/   # after substituting repo URL / revision / namespace
 
 | Resource | Purpose |
 |----------|---------|
-| `argocd/appproject-packmate.yaml` | AppProject limited to `packmate-lab` |
-| `argocd/application-packmate-lab.yaml` | Manual sync Application (no prune, no self-heal) |
+| `argocd/application-packmate-lab.yaml` | DEV demo Application (`packmate-lab`, manual sync, no prune, no self-heal) |
+| `argocd/appproject-packmate.yaml` | AppProject `packmate` — destination limited to `packmate-prod`, defines the `promoter` role |
+| `argocd/application-packmate-prod.yaml` | **PROD** Application `packmate-prod` — manual sync, prune/self-heal off; the only thing that deploys `packmate-prod` |
+
+Applied automatically by `scripts/prepare-prod.sh` (auto-run from `make bootstrap`), or manually via `make prepare-prod`.
 
 ## If GitOps stays unavailable
 
-Document the module as a walkthrough using screenshots from a prepared cluster,
-and continue the lab with Modules 1–9 (OpenShift AI + Pipelines).
+Document Modules D–F as a walkthrough using screenshots from a prepared cluster,
+and continue the lab with Modules A–C (OpenShift AI, Development, CI).
 
 ## Sandbox validation note (2026-07-22)
 

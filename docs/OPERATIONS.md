@@ -5,12 +5,68 @@
 | Target | Purpose |
 |--------|---------|
 | `make preflight` | Cluster/image checks |
-| `make bootstrap` | Idempotent deploy from prebuilt images |
-| `make verify` | Non-destructive readiness |
-| `make cleanup` | Interactive namespace delete |
+| `make bootstrap` | Idempotent DEV deploy from prebuilt images + PROD prep (no PROD workload apply) |
+| `make prepare-prod` | Standalone, idempotent PROD prep (namespace, Secret, image-pull RBAC, Argo AppProject/Application) |
+| `make configure-argocd-rbac` | Standalone: SSO `groups` scope, OpenShift group, AppProject `promoter` role |
+| `make verify` / `make verify-dev` | Non-destructive DEV readiness |
+| `make verify-prod` | Non-destructive PROD readiness (after an Argo CD Sync) |
+| `make verify-gitops` | AppProject/Application/RBAC checks |
+| `make validate-prod` | Offline render checks on `deploy/overlays/prod` (no cluster deploy) |
+| `make cleanup` | Interactive DEV (`packmate-lab`) namespace delete only |
 | `make test` | Unit tests + quality gate + security-check |
-| `make render` | Kustomize render |
-| `make promote` | Local backend digest bump (no push) |
+| `make render` | Kustomize render (DEV + PROD overlays) |
+| `make promote` | `scripts/promote-backend-image.sh` (see `--help`) |
+
+## Environments
+
+| Environment | Namespace | Deployed by | Contains |
+|-------------|-----------|-------------|----------|
+| DEV | `packmate-lab` | `make bootstrap` | Workbench, Playground, AI asset endpoints, Pipeline `packmate-ci`, app workloads |
+| PROD | `packmate-prod` | Argo CD Sync only | App workloads only |
+
+## Promotion, Sync, and rollback — without the Argo CD admin password
+
+Every PROD change is: **Pipeline validates (DEV) → pull request promotes → merge →
+Argo CD Sync deploys (PROD)**. None of these steps needs the Argo CD local admin
+account; operators authenticate to Argo CD with OpenShift SSO and hold only the
+AppProject `promoter` role (`get` + `sync` on `Application/packmate-prod`).
+
+**Promote** a validated candidate digest:
+
+```bash
+scripts/promote-backend-image.sh --pipelinerun <pipelinerun-name> --namespace packmate-lab --create-pr
+```
+
+Edits only `deploy/overlays/prod/kustomization.yaml`, opens a PR to `packmate-v2`. Review, then merge.
+
+**Sync** after merge (Argo CD UI, signed in via OpenShift SSO):
+
+1. Open Application `packmate-prod` — status shows **OutOfSync**.
+2. Click **Sync**. Prune and self-heal are disabled by design; nothing else in the namespace is touched.
+3. Confirm **Synced** / **Healthy**.
+
+Or, if your `promoter` role covers the Argo CD CLI/API and you prefer scripting the click:
+
+```bash
+argocd app sync packmate-prod --grpc-web
+argocd app wait packmate-prod --health --grpc-web
+```
+
+(Requires an SSO-issued Argo CD auth token — never the local admin password.)
+
+**Roll back** a bad promotion:
+
+```bash
+scripts/rollback-prod-image.sh --create-pr
+```
+
+Restores the previous backend digest found in the Git history of the PROD overlay, opens a PR, then Sync again the same way. No rebuild, no direct cluster edit.
+
+**Verify** after any Sync:
+
+```bash
+make verify-prod
+```
 
 ## Health endpoints
 
@@ -20,13 +76,15 @@
 | `GET /ready` | Readiness (no LLM dependency) |
 | `GET /metrics` | Prometheus metrics |
 
+Available on both DEV and PROD Deployments.
+
 ## Environment variables
 
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `BASE_URL` | empty | OpenAI-compatible base URL |
 | `MODEL` | empty | Model id |
-| `LITELLM_API_KEY` | from Secret | Never in Git |
+| `LITELLM_API_KEY` | from Secret | Never in Git. `packmate-llm` (DEV) / `packmate-prod-llm` (PROD) |
 | `OTEL_SERVICE_NAME` | `packmate-backend` | |
 | `OTEL_TRACES_EXPORTER` | `none` | |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Optional |
@@ -71,26 +129,34 @@ podman build -t packmate-baggage-policy-mcp:dev -f mcp-servers/baggage-policy/Co
 
 ## MCP versioning
 
-- MCP servers are Deployments pinned by digest in overlays (same GitOps flow as app images).
+- MCP servers are Deployments pinned by digest in each overlay (same promotion flow as the backend, though only the backend has a scripted promotion path today).
 - They are **not** Argo Rollouts by default; change carefully and rely on deterministic + Playground regression checks.
 
 ## GitOps expectations
 
-- Dev auto-sync
-- Prod manual sync
-- Prod images by digest after Tekton push pipeline
+- DEV Argo demo Application (`packmate-lab`): manual sync, illustrative only.
+- **PROD** Application `packmate-prod`: **manual sync always**, prune off, self-heal off, destination `packmate-prod` only.
+- PROD images move by digest, only after a merged promotion/rollback pull request — never by editing the cluster directly.
+- `packmate-prod-llm` Secret is excluded from Sync diffing (`ignoreDifferences`) so it is never pruned or overwritten by Git.
 
 ## Incident checklist
 
-1. `/ready` and `/health`
-2. Predictor Service endpoints
-3. Secret `packmate-llm` present
-4. Recent Argo sync / Rollout status
-5. Quality gate on last commit
+1. `/ready` and `/health` (DEV and PROD)
+2. Predictor Service endpoints (`my-first-model`)
+3. Secret present: `packmate-llm` (DEV) / `packmate-prod-llm` (PROD)
+4. Recent Argo CD sync status for `packmate-prod` (`make verify-gitops`, `oc get application packmate-prod -n openshift-gitops`)
+5. Quality gate on the last promoted commit
+6. If PROD is unhealthy after a promotion: `scripts/rollback-prod-image.sh --create-pr`, merge, Sync — do not `oc edit` the Deployment directly (Argo CD will revert it on the next Sync)
 
-## Lab release validation pointers (2026-07-22)
+## Lab release validation pointers (2026-07-22, DEV path)
 
 - Repro NS: `packmate-repro` (GHCR digests)
 - PipelineRun: `packmate-ci-validate-20260722-123626` Succeeded
 - Argo Application `packmate-lab` Synced/Healthy (destination `packmate-repro`)
 - Do not auto-promote Pipeline digests onto live Deployments
+
+The `packmate-prod` split (`prepare-prod.sh`, `promote-backend-image.sh --create-pr`,
+`rollback-prod-image.sh --create-pr`, `configure-argocd-lab-rbac.sh`) was added after
+this run; `make validate-prod` and the repository test suite pass, but a fresh
+live-cluster DEV→PROD→rollback cycle has not yet been re-logged here — see
+`docs/implementation/LAB_ACCEPTANCE_REPORT.md` for current status.

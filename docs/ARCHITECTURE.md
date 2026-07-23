@@ -1,21 +1,30 @@
 # Architecture
 
-## Lab pedagogy (120 minutes)
+## Lab pedagogy (150 minutes, DEV → PROD)
+
+Two namespaces on the same cluster:
+
+| Environment | Namespace | Role |
+|-------------|-----------|------|
+| **DEV** | `packmate-lab` | Data Science Project: Workbench, Playground, AI asset endpoints, Pipeline `packmate-ci`, app workloads for experimentation |
+| **PROD** | `packmate-prod` | Runtime-only: app workloads deployed exclusively by Argo CD Sync — no Workbench, Pipeline, Playground, or custom model endpoint |
 
 | Layer | Examples |
 |-------|----------|
-| Participant ClickOps | Data Science Project, Workbench, AI asset endpoints, Playground, Pipeline Start, Argo Sync |
-| `make bootstrap` | MCP servers, FastAPI, frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
-| Platform prerequisites | OpenShift AI, Pipelines, optional GitOps, shared Llama in `my-first-model`, prebuilt images |
+| Participant ClickOps | Data Science Project (DEV), Workbench, AI asset endpoints, Playground, Pipeline Start, promotion PR review/merge, Argo Sync (PROD) |
+| `make bootstrap` | DEV: MCP servers, FastAPI, frontend, Secrets, Routes, MCP registration, Tekton manifests. Also **prepares** PROD (namespace, Secret, image-pull RBAC, Argo AppProject/Application, SSO group) without deploying PROD workloads |
+| `scripts/promote-backend-image.sh` | Reads a Succeeded PipelineRun + PASS quality gate in DEV, edits **only** the backend digest in `deploy/overlays/prod/kustomization.yaml`, opens a pull request — never applies to the cluster |
+| Argo CD | Application `packmate-prod` (manual Sync, prune off, self-heal off) is the **only** thing that deploys to PROD |
+| Platform prerequisites | OpenShift AI, Pipelines, OpenShift GitOps, shared Llama in `my-first-model`, prebuilt images |
 
-Playground = **model + system prompt + MCP**.
-FastAPI Packmate = Playground idea **industrialized** (Pydantic validation, MCP cache, bounded LLM retry, SSE + heartbeats, metrics, NetworkPolicies).
+Playground = **model + system prompt + MCP**, DEV only.
+FastAPI Packmate = Playground idea **industrialized** (Pydantic validation, MCP cache, bounded LLM retry, SSE + heartbeats, metrics, NetworkPolicies), running in both DEV and PROD.
 
 ## Runtime components (OpenShift AI–centered)
 
 ```mermaid
 flowchart TB
-  subgraph oai [OpenShift AI]
+  subgraph oai [OpenShift AI — DEV only]
     DSP[Data Science Project packmate-lab]
     WB[Workbench code-server]
     Playground[Gen AI Playground]
@@ -24,21 +33,34 @@ flowchart TB
     DSP --> Playground
     Assets --> Model[llama-32-3b-instruct]
   end
-  subgraph app [Packmate application namespace]
-    Route --> Frontend
-    Frontend -->|SSE POST /api/v1/chat/stream| Backend
-    Frontend -.->|sync POST /api/v1/chat tests| Backend
-    Backend --> ConfigMap
-    Backend --> SecretLLM[Secret packmate-llm]
+  subgraph dev [packmate-lab — DEV namespace]
+    RouteDev[Route] --> FrontendDev[Frontend]
+    FrontendDev -->|SSE POST /api/v1/chat/stream| BackendDev[Backend]
+    BackendDev --> SecretDev[Secret packmate-llm]
     WeatherMCP[weather-mcp /mcp]
     BaggageMCP[baggage-policy-mcp /mcp]
-    Backend -->|PACKMATE_TOOL_MODE=mcp| WeatherMCP
-    Backend -->|PACKMATE_TOOL_MODE=mcp| BaggageMCP
+    BackendDev -->|PACKMATE_TOOL_MODE=mcp| WeatherMCP
+    BackendDev -->|PACKMATE_TOOL_MODE=mcp| BaggageMCP
     Playground -->|Streamable HTTP| WeatherMCP
     Playground -->|Streamable HTTP| BaggageMCP
+    Pipeline[Pipeline packmate-ci] -->|validates + builds| BackendDev
   end
-  Backend -->|BASE_URL /v1| Model
+  subgraph prod [packmate-prod — PROD namespace]
+    RouteProd[Route] --> FrontendProd[Frontend]
+    FrontendProd -->|SSE POST /api/v1/chat/stream| BackendProd[Backend]
+    BackendProd --> SecretProd[Secret packmate-prod-llm]
+    WeatherMCPProd[weather-mcp /mcp]
+    BaggageMCPProd[baggage-policy-mcp /mcp]
+    BackendProd -->|PACKMATE_TOOL_MODE=mcp| WeatherMCPProd
+    BackendProd -->|PACKMATE_TOOL_MODE=mcp| BaggageMCPProd
+  end
+  BackendDev -->|BASE_URL /v1| Model
+  BackendProd -->|BASE_URL /v1| Model
   WeatherMCP --> OpenMeteo[Open-Meteo API]
+  WeatherMCPProd --> OpenMeteo
+  Pipeline -.->|"candidate digest, PASS gate"| PR[Pull request: deploy/overlays/prod]
+  PR -.->|merge| Git[packmate-v2]
+  Git -.->|Sync, manual, prune off| RouteProd
 ```
 
 ## Tool modes
@@ -68,30 +90,32 @@ On AWS Classic ELB sandboxes the **idle** timeout is ~60s (no bytes on the wire)
 
 SSE never streams: model chain-of-thought, `<think>` tags, medical notes, raw tool payloads, stack traces, or credentials.
 
-## OpenShift AI lab path
+## OpenShift AI lab path (DEV)
 
-1. Data Science Project + Workbench
-2. Discover model in AI asset endpoints
+1. Data Science Project (`packmate-lab`) + Workbench
+2. Discover model in AI asset endpoints (`my-first-model`, shared)
 3. Deploy/register MCP servers (`gen-ai-aa-mcp-servers` ConfigMap — admin)
 4. Prototype in Gen AI Playground → export
-5. Integrate into FastAPI + React
+5. Integrate into FastAPI + React (DEV Route)
 6. Level 1 deterministic evals (+ optional TrustyAI/EvalHub)
-7. Tekton (4 images) → GitOps → Argo CD → Rollouts canary (backend)
+7. Pipeline `packmate-ci` **validates only** (tests + AI quality gate + manifest checks) and builds the backend — it never deploys anywhere
 
-## Delivery
+## Delivery: Pipeline validates, PR promotes, Argo deploys PROD
 
 ```mermaid
 flowchart LR
-  PR[Pull Request] --> TektonPR[Tekton PR pipeline]
-  Push[Push] --> TektonPush[Tekton push pipeline]
-  TektonPush --> Images[4 image digests]
-  Images --> GitOps[GitOps commit]
-  GitOps --> ArgoDev[Argo CD dev]
-  GitOps --> ArgoProd[Argo CD prod]
-  ArgoProd --> Rollout[Backend Rollout canary]
+  Start[Participant: Start Pipeline] --> Tekton[Tekton packmate-ci: clone, test, ai-quality-gate, validate-manifests, build-backend]
+  Tekton -->|"PASS + digest"| Candidate[Candidate backend digest in packmate-lab ImageStream]
+  Candidate --> Promote[scripts/promote-backend-image.sh --create-pr]
+  Promote --> PR[Pull request: deploy/overlays/prod/kustomization.yaml only]
+  PR -->|human review + merge| Git[packmate-v2]
+  Git --> ArgoProd[Argo CD Application packmate-prod: OutOfSync]
+  ArgoProd -->|manual Sync, prune=false, selfHeal=false| Prod[packmate-prod workloads]
+  Prod -.->|bad promotion| Rollback[scripts/rollback-prod-image.sh --create-pr]
+  Rollback --> PR
 ```
 
-MCP servers version via Deployment image digests (not Rollouts by default).
+The Pipeline **never** deploys to `packmate-prod` (guarded by `validate-manifests`, which fails the run on any `oc apply … packmate-prod` / `oc set image` / `argocd sync` string in `.tekton/lab/`). Argo CD Sync is the only path that changes PROD Deployments. MCP servers version via Deployment image digests in each overlay (not Rollouts by default); an optional canary annex for the backend Deployment exists under `deploy/overlays/prod-canary-annex/` and is not part of the graded path.
 
 ## Privacy boundaries
 

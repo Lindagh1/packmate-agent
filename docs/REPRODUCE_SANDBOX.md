@@ -1,7 +1,7 @@
-# Reproduce the Packmate OpenShift AI sandbox
+# Reproduce the Packmate OpenShift AI DEV → PROD sandbox
 
-Target: a **new ephemeral sandbox** where participants ClickOps the Data Science
-Project + Workbench, then run:
+Target: a **new ephemeral sandbox** where participants ClickOps the DEV Data
+Science Project + Workbench, then run:
 
 ```bash
 make preflight
@@ -9,42 +9,64 @@ make bootstrap
 make verify
 ```
 
-Bootstrap deploys from **prebuilt images** (GHCR/Quay/internal digests). It does
-**not** rebuild four images and does **not** redeploy the Llama model.
+Bootstrap deploys **DEV** (`packmate-lab`) from **prebuilt images** (GHCR/Quay/internal
+digests) and **prepares PROD** (`packmate-prod`) — namespace, Secret, image-pull
+RBAC, Argo CD AppProject/Application, SSO group — **without deploying any PROD
+workload**. It does **not** rebuild four images and does **not** redeploy the Llama
+model.
+
+## Two environments
+
+| Environment | Namespace | Created by | Contains |
+|-------------|-----------|-------------|----------|
+| DEV | `packmate-lab` | `make bootstrap` (workloads) | DSP, Workbench, Playground, AI asset endpoints, Pipeline `packmate-ci`, app workloads |
+| PROD | `packmate-prod` | `make bootstrap` → `prepare-prod.sh` (prep only) + Argo CD Sync (workloads) | App workloads only — no Workbench, Pipeline, Playground, custom model endpoint |
+
+PROD workloads only ever change through: **Pipeline (validate, DEV) → pull request
+(promote) → merge → Argo CD Sync (deploy, PROD)**.
 
 ## Architecture split
 
 | Layer | Responsibility |
 |-------|----------------|
-| Participant ClickOps | DSP, Workbench, clone, make targets, Playground (select assets), Pipeline Start, Argo Sync |
-| Bootstrap automation | Custom endpoints feature, shared-model discovery, MCP, custom model endpoint, backend/frontend, Secrets, Routes, MCP registration, Tekton/Argo manifests |
-| Platform prerequisites | OpenShift AI, Pipelines, (GitOps), GPU model in `my-first-model` |
+| Participant ClickOps | DSP, Workbench, clone, make targets, Playground (select assets, DEV), Pipeline Start (DEV), promotion PR review/merge, Argo Sync (PROD) |
+| Bootstrap automation | Custom endpoints feature, shared-model discovery, MCP, custom model endpoint, backend/frontend, Secrets, Routes, MCP registration, Tekton manifests (DEV) + PROD prep (namespace, Secret, RBAC, Argo manifests, SSO group) |
+| Promotion automation | `scripts/promote-backend-image.sh` (candidate digest → PR) / `scripts/rollback-prod-image.sh` (previous digest → PR) — Git only, never `oc apply` |
+| Platform prerequisites | OpenShift AI, Pipelines, OpenShift GitOps, GPU model in `my-first-model` |
 
 ## Persist vs ephemeral
 
-**Persistent:** Git repo, GHCR/Quay images, manifests, system prompt, docs.
-**Ephemeral:** Project, Workbench, Secrets, Deployments, Routes, MCP registration, PipelineRuns, Argo Application, custom endpoint objects.
+**Persistent:** Git repo (including the full digest history of `deploy/overlays/prod/kustomization.yaml`), GHCR/Quay images, manifests, system prompt, docs.
+**Ephemeral:** DEV project, Workbench, Secrets (`packmate-llm`, `packmate-prod-llm`), Deployments, Routes, MCP registration, PipelineRuns, Argo CD Applications, custom endpoint objects, PROD namespace.
 
 ## Configure
 
 ```bash
 cp config/sandbox.env.example config/sandbox.env
 # Set digest-pinned *_IMAGE values from the publish-lab-images workflow summary.
+# Set LLM_BASE_URL / LLM_MODEL / LITELLM_API_KEY — reused for both packmate-llm (DEV)
+# and packmate-prod-llm (PROD) Secrets.
 # Never commit config/sandbox.env.
 ```
 
 ## Commands
 
 ```bash
-make preflight    # PASS/WARNING/BLOCKED/OPTIONAL_UNAVAILABLE
-make bootstrap    # confirmation prompt; SKIP_CONFIRM=true for CI-like smoke
-make verify       # non-destructive; exit 0 = lab core ready
-make cleanup      # interactive only
+make preflight            # PASS/WARNING/BLOCKED/OPTIONAL_UNAVAILABLE
+make bootstrap            # DEV workloads + AI assets + PROD prep (confirmation prompt; SKIP_CONFIRM=true for CI-like smoke)
+make prepare-prod          # Re-run PROD prep standalone (idempotent; namespace/Secret/RBAC/Argo only)
+make configure-argocd-rbac # SSO group + AppProject "promoter" role, standalone
+make verify / verify-dev  # DEV readiness (non-destructive)
+make verify-prod          # PROD readiness after an Argo CD Sync
+make verify-gitops        # AppProject/Application/RBAC checks
+make validate-prod        # Static PROD overlay render checks (offline, no cluster deploy)
+make promote               # scripts/promote-backend-image.sh (see --help)
+make cleanup                # interactive, DEV (packmate-lab) only
 ```
 
 ### Namespace policy
 
-Default: participant creates the Data Science Project in the UI.
+Default: participant creates the DEV Data Science Project in the UI.
 If missing, bootstrap prints:
 
 ```text
@@ -52,9 +74,10 @@ MANUAL STEP REQUIRED:
 Create the Data Science Project from the OpenShift AI dashboard.
 ```
 
-Instructor-only: `ALLOW_CREATE_NAMESPACE=true`.
+Instructor-only: `ALLOW_CREATE_NAMESPACE=true` (DEV project only — never used for PROD).
+PROD namespace creation is always automatic via `prepare-prod.sh` (controlled by `CREATE_PROD_NAMESPACE`, default `true`), never ClickOps.
 
-### Model endpoint (automated)
+### Model endpoint (automated, DEV only)
 
 Official lab defaults:
 
@@ -65,8 +88,49 @@ CREATE_MODEL_CUSTOM_ENDPOINT=true
 
 Bootstrap discovers the shared predictor in `my-first-model`, creates the Packmate
 custom endpoint in `packmate-lab`, and fails if creation/verification fails.
-Participants never run Create endpoint ClickOps. Quote spaced display/use-case
-values in `config/sandbox.env` (see `config/sandbox.env.example`).
+Participants never run Create endpoint ClickOps. `packmate-prod` never has a custom
+model endpoint — `scripts/verify-prod.sh` fails if one is found there. Quote spaced
+display/use-case values in `config/sandbox.env` (see `config/sandbox.env.example`).
+
+## Preparing PROD (`prepare-prod.sh`)
+
+Runs automatically from `make bootstrap` when `CREATE_PROD_NAMESPACE=true` or
+`CREATE_ARGOCD_APPLICATION=true` (both default `true`). Idempotent; never applies
+`deploy/overlays/prod` to the cluster.
+
+```bash
+make prepare-prod
+```
+
+Creates/labels namespace `packmate-prod` (`packmate.io/environment=prod`, never the
+DSP labels), Secret `packmate-prod-llm`, cross-namespace `system:image-puller` RBAC,
+Argo CD `AppProject/packmate` + `Application/packmate-prod` (manual Sync, prune off,
+self-heal off), the `argocd.argoproj.io/managed-by` namespace label, and — when
+`CREATE_ARGOCD_RBAC=true` (default `true`) — the OpenShift group + AppProject
+`promoter` role from `scripts/configure-argocd-lab-rbac.sh`.
+
+## Running the Pipeline and promoting (DEV → PROD)
+
+```bash
+# Start packmate-ci — workspace "source" MUST use a 2Gi VolumeClaimTemplate,
+# never Empty Directory:
+oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
+
+# After it Succeeds and the AI quality gate is PASS:
+RUN=$(oc get pipelinerun -n packmate-lab -l tekton.dev/pipeline=packmate-ci \
+        --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+scripts/promote-backend-image.sh --pipelinerun "$RUN" --namespace packmate-lab --create-pr
+```
+
+The script edits only `deploy/overlays/prod/kustomization.yaml` and opens a pull
+request to `packmate-v2` — review it, then merge. Argo CD Application `packmate-prod`
+then goes **OutOfSync**; Sync it manually (SSO login, prune disabled) to deploy.
+
+Roll back a bad promotion the same way, in reverse:
+
+```bash
+scripts/rollback-prod-image.sh --create-pr
+```
 
 ## Publish images (instructor, once per version)
 
@@ -75,11 +139,15 @@ values in `config/sandbox.env` (see `config/sandbox.env.example`).
 3. Make each GHCR package **Public**.
 4. Distribute refs via `sandbox.env` (out of band).
 
-Internal registry images vanish when the sandbox is deleted; GHCR/Quay do not.
+Internal registry images vanish when the sandbox is deleted; GHCR/Quay do not. Both
+`deploy/overlays/dev` and the initial `deploy/overlays/prod` start from the same
+published digests; PROD only advances via a promotion PR.
 
 ## GitOps absent
 
-See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`).
+See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`). Without the
+Operator, DEV Modules A–C still work; PROD prep is skipped with a warning and
+Modules D–F become a screenshot walkthrough.
 
 ## Safety
 
@@ -87,9 +155,11 @@ See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`).
 - No `:latest`
 - No model redeploy
 - No Operator install from lab scripts
-- Destructive cleanup requires typing `DELETE-PACKMATE-LAB`
+- No direct `oc apply -k deploy/overlays/prod` — Argo CD Sync only
+- No direct push to `packmate-v2` from promotion/rollback scripts — pull request only
+- Destructive cleanup (`make cleanup`) requires typing `DELETE-PACKMATE-LAB` and only ever targets `packmate-lab` (never `packmate-prod`)
 
-## Validated release evidence (2026-07-22)
+## Validated release evidence (2026-07-22, DEV path)
 
 | Item | Value |
 |------|-------|
@@ -108,3 +178,11 @@ See `docs/INSTALL_GITOPS_PREREQUISITE.md` (`GITOPS_OPERATOR_REQUIRED`).
 | OpenShift GitOps | Installed on this sandbox (`openshift-gitops-operator.v1.21.1`, channel `latest`) |
 | Argo CD Application | `packmate-lab` → `packmate-repro`: manual sync **Synced/Healthy**; OutOfSync demo via ConfigMap then re-Synced; controller SA granted namespace `edit` |
 | Rollouts / EvalHub | Optional / not configured |
+
+**Not yet independently re-validated on a fresh cluster (documented, not fabricated):**
+the `packmate-prod` split — `prepare-prod.sh`, `promote-backend-image.sh --create-pr`,
+`rollback-prod-image.sh --create-pr`, and `configure-argocd-lab-rbac.sh` — was added
+after the run above. `make validate-prod` (offline render checks) and the repository
+test suite pass; a full live-cluster DEV→PROD→rollback cycle should be re-run and
+logged here (or in `docs/implementation/LAB_ACCEPTANCE_REPORT.md`) before the first
+graded class on a new cluster.

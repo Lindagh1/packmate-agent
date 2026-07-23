@@ -10,7 +10,7 @@
 | Playground missing Packmate Llama / MCP | Hard-refresh Gen AI studio; `make verify` must PASS asset checks |
 | Health check timed out after 180s | Inspect Route/deploy; bootstrap retries every 5s and accepts only HTTP 200 |
 | Image empty / unreachable | Instructor must publish GHCR/Quay digests into `config/sandbox.env` |
-| `GITOPS_OPERATOR_REQUIRED` | Module 10 screenshot-only — see `docs/INSTALL_GITOPS_PREREQUISITE.md` |
+| `GITOPS_OPERATOR_REQUIRED` | Modules D–F (Promotion/Production/Rollback) screenshot-only — see `docs/INSTALL_GITOPS_PREREQUISITE.md` |
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
 | Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
@@ -32,7 +32,7 @@ Cause:
 Fix:
 
 1. Ensure Pipeline scripts use `workingDir: $(workspaces.source.path)/backend` for pytest and the quality gate (already in `.tekton/lab/packmate-ci.yaml`).
-2. Re-start the PipelineRun with a **VolumeClaimTemplate** for workspace `source` (1Gi is enough), **or**:
+2. Re-start the PipelineRun with a **VolumeClaimTemplate** for workspace `source` (**2Gi**, see `.tekton/lab/packmate-ci-run.yaml`), **or**:
 
 ```bash
 oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
@@ -84,9 +84,101 @@ After recreating backend, restart frontend so Nginx re-resolves `packmate-backen
 
 Prefer forwarding the pod container port 8080 directly.
 
-## Argo CD OutOfSync
+## Argo CD OutOfSync after a promotion/rollback merge (expected)
 
-Usually image digest drift. Check GitOps commit from Tekton push pipeline.
+Symptom: Application `packmate-prod` shows **OutOfSync** right after a promotion
+(Module D) or rollback (Module F) pull request is merged.
+
+This is **expected**, not a fault: merging only changes
+`deploy/overlays/prod/kustomization.yaml` in Git. Nothing in the cluster changes
+until a human clicks **Sync**. Confirm the digest in the diff matches what you
+expect, then Sync (Prune stays disabled; the Application never auto-heals).
+
+If OutOfSync appears **without** a recent merge, check for manual drift:
+
+```bash
+oc -n packmate-prod get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.spec.template.spec.containers[0].image}{"\n"}{end}'
+git show packmate-v2:deploy/overlays/prod/kustomization.yaml | grep -A2 packmate-backend
+```
+
+## Argo CD shows "permission denied" / promoter role has no effect after RBAC setup
+
+Symptom: the instructor just ran `make configure-argocd-rbac` (or `CREATE_ARGOCD_RBAC=true`
+during `make bootstrap`/`make prepare-prod`), but a participant still cannot see or
+Sync `Application/packmate-prod`, or sees no `promoter` actions in the Argo CD UI.
+
+Cause: Argo CD reads OpenShift **group membership from the OAuth token issued at
+login time**. Adding a user to `packmate-lab-users` after they already logged in
+does not retroactively update their session.
+
+Fix:
+
+1. Participant: **log out** of the Argo CD UI, then **log back in** via OpenShift SSO
+   (do not use the local admin account).
+2. If the role still does not apply, the instructor may need to reload the RBAC
+   scopes:
+
+```bash
+oc rollout restart deployment/<argocd-name>-server -n openshift-gitops
+```
+
+3. Confirm membership and role are actually in place:
+
+```bash
+oc get group packmate-lab-users -o jsonpath='{.users}'
+make verify-gitops
+```
+
+## Cross-namespace image pull failures (`packmate-prod` cannot pull from `packmate-lab`)
+
+Symptom: after an Argo CD Sync, `packmate-prod` Pods sit in `ImagePullBackOff` /
+`ErrImagePull` even though the digest in `deploy/overlays/prod/kustomization.yaml`
+is correct.
+
+Cause: this only happens if an overlay/image reference points at the **internal**
+OpenShift registry in `packmate-lab` instead of the published GHCR/Quay digest.
+The shipped `deploy/overlays/prod` uses public GHCR digests, so this is rare in the
+official lab, but can occur if an instructor customizes the overlay to use
+internal-registry images.
+
+Fix:
+
+1. Prefer digest-pinned **GHCR/Quay** references in `deploy/overlays/prod` (no
+   cross-namespace pull needed).
+2. If internal-registry images are required, confirm the cross-namespace
+   `system:image-puller` grant from `prepare-prod.sh` is in place:
+
+```bash
+oc -n packmate-lab auth can-i get imagestreams/layers \
+  --as=system:serviceaccount:packmate-prod:packmate-backend
+```
+
+3. If it returns `no`, re-run `make prepare-prod` (idempotent) or grant manually:
+
+```bash
+oc -n packmate-lab adm policy add-role-to-user system:image-puller \
+  system:serviceaccount:packmate-prod:packmate-backend
+```
+
+## PROD Secret `packmate-prod-llm` missing
+
+Symptom: `packmate-backend` in `packmate-prod` is `CrashLoopBackOff` / `503` after
+Sync, or `make verify-prod` fails with `Secret packmate-prod-llm missing`.
+
+Cause: Argo CD **never creates or prunes** `packmate-prod-llm` — it is intentionally
+outside Git (`ignoreDifferences` on `Application/packmate-prod`) and is only created
+by `scripts/prepare-prod.sh` (auto-run from `make bootstrap`, or standalone via
+`make prepare-prod`).
+
+Fix:
+
+```bash
+LLM_BASE_URL=... LLM_MODEL=... LITELLM_API_KEY=... make prepare-prod
+oc -n packmate-prod get secret packmate-prod-llm   # confirm it exists (values not shown)
+```
+
+Never recreate this Secret through Git / Argo CD — it must stay a cluster-side,
+instructor-managed object so a future Sync can never delete or overwrite it.
 
 ## Tekton permissions
 
