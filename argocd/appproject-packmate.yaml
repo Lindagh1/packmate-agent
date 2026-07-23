@@ -1,27 +1,24 @@
-# Argo CD AppProject for Packmate Lab (manual sync intro).
-# Apply only when OpenShift GitOps Operator is installed.
-# Placeholders replaced by bootstrap: __GIT_REPO_URL__ __GIT_REVISION__ __PACKMATE_NAMESPACE__
+# Argo CD AppProject for Packmate PRODUCTION only.
+# Placeholders replaced by bootstrap: __GIT_REPO_URL__
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: packmate-lab
+  name: packmate
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: packmate
 spec:
-  description: Packmate Lab — namespace-scoped GitOps intro (no wildcards, no admin)
+  description: Packmate production GitOps — destination packmate-prod only (no wildcards)
   sourceRepos:
     - __GIT_REPO_URL__
   destinations:
-    - namespace: __PACKMATE_NAMESPACE__
+    - namespace: packmate-prod
       server: https://kubernetes.default.svc
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
     - group: ""
       kind: ConfigMap
-    - group: ""
-      kind: Secret
     - group: ""
       kind: Service
     - group: ""
@@ -32,5 +29,19 @@ spec:
       kind: NetworkPolicy
     - group: route.openshift.io
       kind: Route
+    # Secret kind is whitelisted so Sync does not fail if a future Git-managed
+    # Secret appears; instructor-created packmate-prod-llm is NOT in Git and
+    # must not be pruned (prune disabled on Application).
+    - group: ""
+      kind: Secret
   orphanedResources:
     warn: true
+  roles:
+    # Participant role — Sync only on Application packmate-prod.
+    - name: promoter
+      description: Packmate lab participants may view and Sync packmate-prod only
+      groups:
+        - __PACKMATE_ARGO_GROUP__
+      policies:
+        - p, proj:packmate:promoter, applications, get, packmate/packmate-prod, allow
+        - p, proj:packmate:promoter, applications, sync, packmate/packmate-prod, allow

@@ -4,3 +4,11 @@ metadata:
   name: packmate-config
 data:
   PACKMATE_VERSION: prod
+  PACKMATE_ENVIRONMENT: production
+  PACKMATE_TOOL_MODE: mcp
+  # In-cluster MCP Services in packmate-prod (not DEV Routes / not packmate-lab).
+  PACKMATE_WEATHER_MCP_URL: http://weather-mcp:8080/mcp
+  PACKMATE_BAGGAGE_MCP_URL: http://baggage-policy-mcp:8080/mcp
+  # Shared model Service — never redeployed into packmate-prod.
+  BASE_URL: http://llama-32-3b-instruct-predictor.my-first-model.svc.cluster.local:8080/v1
+  MODEL: llama-32-3b-instruct

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-backend
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/environment: prod
+spec:
+  template:
+    metadata:
+      labels:
+        packmate.io/environment: prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-frontend
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/environment: prod
+spec:
+  template:
+    metadata:
+      labels:
+        packmate.io/environment: prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-mcp
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/environment: prod
+spec:
+  template:
+    metadata:
+      labels:
+        packmate.io/environment: prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baggage-policy-mcp
+  labels:
+    app.kubernetes.io/part-of: packmate
+    packmate.io/environment: prod
+spec:
+  template:
+    metadata:
+      labels:
+        packmate.io/environment: prod
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: packmate-frontend
+  labels:
+    packmate.io/environment: prod
+  annotations:
+    haproxy.router.openshift.io/timeout: 180s

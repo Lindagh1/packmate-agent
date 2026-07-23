@@ -324,7 +324,7 @@ ROUTE_HOST="$(oc -n "${PACKMATE_NAMESPACE}" get route packmate-frontend -o jsonp
 [[ -n "${ROUTE_HOST}" ]] || die "Route packmate-frontend missing"
 wait_http_200 "https://${ROUTE_HOST}/" "frontend /"
 
-# 11) Pipeline + Argo CD
+# 11) Pipeline (DEV only) + prepare PROD (namespace/secret/RBAC/Argo — no PROD oc apply)
 if [[ "${CREATE_PIPELINE}" == "true" ]]; then
   if packmate_api_has '^pipelines[[:space:]].*tekton\.dev'; then
     log "==> Applying lab Pipeline packmate-ci"
@@ -363,30 +363,30 @@ spec:
 EOF
       log "    BuildConfig/ImageStream packmate-backend created"
     fi
-    log "    Pipeline/packmate-ci ready — Start from OpenShift Pipelines UI"
+    log "    Pipeline/packmate-ci ready — Start with VolumeClaimTemplate 2Gi (not Empty Directory)"
   else
     log "    WARNING: Pipelines API absent — skip CREATE_PIPELINE"
   fi
 fi
 
-if [[ "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
-  if oc get crd applications.argoproj.io >/dev/null 2>&1; then
-    log "==> Applying Argo CD AppProject + Application (manual sync)"
-    sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
-        -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
-        -e "s|__PACKMATE_NAMESPACE__|${PACKMATE_NAMESPACE}|g" \
-        "${ROOT}/argocd/appproject-packmate.yaml" | oc apply -f - >/dev/null
-    sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
-        -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
-        -e "s|__PACKMATE_NAMESPACE__|${PACKMATE_NAMESPACE}|g" \
-        "${ROOT}/argocd/application-packmate-lab.yaml" | oc apply -f - >/dev/null
-    oc -n "${PACKMATE_NAMESPACE}" adm policy add-role-to-user edit \
-      system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller >/dev/null 2>&1 \
-      || log "    NOTE: could not bind Argo application-controller edit role (manual instructor step)"
-    log "    Argo CD resources applied"
+# PROD preparation: namespace + Secret + image-puller + Argo AppProject/Application.
+# Workloads in packmate-prod are deployed ONLY by Argo CD Sync (never oc apply here).
+if [[ "${CREATE_PROD_NAMESPACE}" == "true" || "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
+  if oc get crd applications.argoproj.io >/dev/null 2>&1 || [[ "${CREATE_PROD_NAMESPACE}" == "true" ]]; then
+    log "==> Preparing packmate-prod (GitOps destination; no direct workload apply)"
+    CREATE_ARGOCD_RBAC="${CREATE_ARGOCD_RBAC}" \
+    PACKMATE_LAB_NAMESPACE="${PACKMATE_DEV_NAMESPACE:-${PACKMATE_NAMESPACE}}" \
+    PACKMATE_PROD_NAMESPACE="${PACKMATE_PROD_NAMESPACE:-packmate-prod}" \
+    GIT_REPO_URL="${GIT_REPO_URL}" \
+    GIT_REVISION="${GIT_REVISION}" \
+    PACKMATE_ARGO_GROUP="${PACKMATE_ARGO_GROUP:-packmate-lab-users}" \
+    LLM_BASE_URL="${LLM_BASE_URL}" \
+    LLM_MODEL="${LLM_MODEL}" \
+    LITELLM_API_KEY="${LITELLM_API_KEY}" \
+      bash "${ROOT}/scripts/prepare-prod.sh" \
+      || die "prepare-prod failed"
   else
     log "    GITOPS_OPERATOR_REQUIRED — see docs/INSTALL_GITOPS_PREREQUISITE.md"
-    oc apply --dry-run=client -f "${ROOT}/argocd/" >/dev/null 2>&1 || true
   fi
 fi
 
@@ -398,7 +398,9 @@ bash "${ROOT}/scripts/test-streaming-smoke.sh" || die "SSE smoke failed"
 cat <<EOF
 
 === Bootstrap complete ===
-Route: https://${ROUTE_HOST}/
+DEV Route: https://${ROUTE_HOST}/
+DEV namespace: ${PACKMATE_NAMESPACE}
+PROD namespace: ${PACKMATE_PROD_NAMESPACE:-packmate-prod} (workloads via Argo CD Sync only)
 
 AI assets prepared for project Packmate Lab (${PACKMATE_NAMESPACE}):
   - Packmate Llama 3.2 3B (custom endpoint → shared model in ${MODEL_NAMESPACE})
@@ -408,8 +410,9 @@ AI assets prepared for project Packmate Lab (${PACKMATE_NAMESPACE}):
 Remaining UI steps:
 1. Gen AI studio → Playground → Project: Packmate Lab
 2. Select Packmate Llama 3.2 3B → enable both MCP → paste playground/system-instructions.md
-3. Pipelines → packmate-ci → Start
-4. Argo CD → packmate-lab → Sync (if GitOps installed)
+3. Pipelines → packmate-ci → Start → Workspace VolumeClaimTemplate 2Gi
+4. Promote: scripts/promote-backend-image.sh --pipelinerun <name> --create-pr
+5. Argo CD (OpenShift SSO) → packmate-prod → Sync (Prune off)
 
-Next: make verify
+Next: make verify-dev && make verify-prod (after Sync)
 EOF

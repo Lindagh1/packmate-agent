@@ -1,19 +1,25 @@
-# Packmate v2 lab Makefile — first-touch OpenShift AI (+ Pipelines / GitOps intro)
+# Packmate v2 lab Makefile — OpenShift AI DEV → CI → PR → Argo CD PROD
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SHELL := /bin/bash
 
-.PHONY: help preflight bootstrap verify cleanup test render promote
+.PHONY: help preflight bootstrap verify verify-dev verify-prod verify-gitops \
+	prepare-prod configure-argocd-rbac cleanup test render promote validate-prod
 
 help:
 	@echo "Packmate lab targets:"
-	@echo "  make preflight   Cluster and image checks"
-	@echo "  make bootstrap   Deploy Packmate workloads + AI assets (idempotent)"
-	@echo "  make verify      Non-destructive readiness checks (incl. custom endpoint)"
-	@echo "  make cleanup     Interactive packmate-lab cleanup"
-	@echo "  make test        Backend + frontend + MCP unit tests + quality gate"
-	@echo "  make render      Render Kustomize overlays"
-	@echo "  make promote     Promote a backend digest into the GitOps overlay (local)"
+	@echo "  make preflight              Cluster and image checks"
+	@echo "  make bootstrap              DEV workloads + AI assets + prepare PROD (idempotent)"
+	@echo "  make prepare-prod           Create packmate-prod + Secret + Argo (no workload apply)"
+	@echo "  make configure-argocd-rbac  SSO group + AppProject promoter role"
+	@echo "  make verify / verify-dev    DEV readiness (compat)"
+	@echo "  make verify-prod            PROD readiness after Argo Sync"
+	@echo "  make verify-gitops          AppProject/Application/RBAC checks"
+	@echo "  make validate-prod          Static PROD overlay checks"
+	@echo "  make cleanup                Interactive packmate-lab cleanup"
+	@echo "  make test                   Unit tests + quality gate + security-check"
+	@echo "  make render                 Render Kustomize DEV + PROD overlays"
+	@echo "  make promote                Promote backend digest (see script --help)"
 
 preflight:
 	@bash "$(ROOT)/scripts/preflight-sandbox.sh"
@@ -21,8 +27,23 @@ preflight:
 bootstrap:
 	@bash "$(ROOT)/scripts/bootstrap-sandbox.sh"
 
-verify:
+prepare-prod:
+	@bash "$(ROOT)/scripts/prepare-prod.sh"
+
+configure-argocd-rbac:
+	@bash "$(ROOT)/scripts/configure-argocd-lab-rbac.sh"
+
+verify verify-dev:
 	@bash "$(ROOT)/scripts/verify-sandbox.sh"
+
+verify-prod:
+	@bash "$(ROOT)/scripts/verify-prod.sh"
+
+verify-gitops:
+	@bash "$(ROOT)/scripts/verify-gitops.sh"
+
+validate-prod:
+	@bash "$(ROOT)/scripts/validate-prod-overlay.sh"
 
 cleanup:
 	@bash "$(ROOT)/scripts/cleanup-packmate-lab.sh"

@@ -1,12 +1,14 @@
-# Create a new Packmate CI PipelineRun with a shared PVC workspace (2Gi).
-# Do NOT use Empty Directory — later tasks would not see the clone output.
+# Example Packmate CI PipelineRun — shared PVC workspace (required).
+# Prefer this over Empty Directory: each Task must see the clone output.
 #
-#   oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
+# Console: Pipelines → packmate-ci → Start → Workspace source →
+#          VolumeClaimTemplate → 2 GiB → Start
+#
+# CLI:
+#   oc create -n packmate-lab -f .tekton/lab/packmate-ci-pipelinerun.example.yaml
 #
 # After it Succeeds, promote the validated backend digest to production:
-#   RUN=$(oc get pipelinerun -n packmate-lab -l tekton.dev/pipeline=packmate-ci \
-#           --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
-#   scripts/promote-backend-image.sh --pipelinerun "$RUN" --namespace packmate-lab --create-pr
+#   scripts/promote-backend-image.sh --pipelinerun <pipelinerun-name> --namespace packmate-lab --create-pr
 #
 apiVersion: tekton.dev/v1
 kind: PipelineRun

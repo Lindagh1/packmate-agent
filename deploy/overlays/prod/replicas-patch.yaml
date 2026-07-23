@@ -1,6 +1,29 @@
+# Sandbox lab uses 1 replica. Real production should size replicas from SLO /
+# available CPU/memory (often >=2 behind a LoadBalancer / Route).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packmate-backend
+spec:
+  replicas: 1
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: packmate-frontend
 spec:
-  replicas: 2
+  replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-mcp
+spec:
+  replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baggage-policy-mcp
+spec:
+  replicas: 1

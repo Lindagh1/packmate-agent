@@ -1,0 +1,37 @@
+# Argo CD Application packmate-prod — MANUAL sync only.
+# prune=false, selfHeal=false, CreateNamespace=false.
+# Placeholders: __GIT_REPO_URL__ __GIT_REVISION__
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: packmate-prod
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: packmate
+    app.kubernetes.io/component: production
+    packmate.io/environment: prod
+spec:
+  project: packmate
+  source:
+    repoURL: __GIT_REPO_URL__
+    targetRevision: __GIT_REVISION__
+    path: deploy/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: packmate-prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
+      # Keep instructor-created Secrets (packmate-prod-llm) when Syncing.
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: packmate-prod-llm
+      jsonPointers:
+        - /data
+        - /stringData
+  # Explicitly omit automated.prune / automated.selfHeal.
+  revisionHistoryLimit: 5

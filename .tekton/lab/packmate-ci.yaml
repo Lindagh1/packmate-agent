@@ -126,7 +126,15 @@ spec:
                 ls -la backend || true
                 exit 1
               fi
-              echo "CLONE_OK revision=${REVISION}"
+              # Resolve exact commit for the branch tip (best-effort; never fail clone).
+              REPO_PATH="${URL#https://github.com/}"
+              REPO_PATH="${REPO_PATH%.git}"
+              COMMIT="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/${REPO_PATH}/commits/${REVISION}" \
+                | sed -n 's/.*"sha": "\([0-9a-f]\{40\}\)".*/\1/p' | head -1 || true)"
+              [[ -n "${COMMIT}" ]] || COMMIT="unknown-${REVISION}"
+              printf '%s\n' "${COMMIT}" > .git-commit
+              echo "CLONE_OK revision=${REVISION} commit=${COMMIT}"
 
     - name: test
       runAfter: [clone]
@@ -246,15 +254,45 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               echo "WORKDIR=$(pwd)"
-              if [[ ! -f deploy/overlays/dev/kustomization.yaml ]]; then
-                echo "ERROR: deploy/overlays/dev/kustomization.yaml missing"
-                echo "WORKDIR=$(pwd)"
-                ls -la || true
-                echo "HINT: use VolumeClaimTemplate for workspace 'source' (not Empty Directory)."
+              for ov in deploy/overlays/dev deploy/overlays/prod; do
+                if [[ ! -f "${ov}/kustomization.yaml" ]]; then
+                  echo "ERROR: ${ov}/kustomization.yaml missing"
+                  echo "WORKDIR=$(pwd)"
+                  ls -la || true
+                  echo "HINT: use VolumeClaimTemplate for workspace 'source' (not Empty Directory)."
+                  exit 1
+                fi
+              done
+              if grep -R --include='*.yaml' -nE 'image:.*:latest([[:space:]]|$)|newTag:[[:space:]]*latest' \
+                   deploy/overlays/dev deploy/overlays/prod; then
+                echo "FORBIDDEN :latest tag in overlay"
                 exit 1
               fi
-              if grep -R --include='*.yaml' -nE 'image:.*:latest([[:space:]]|$)' deploy/overlays/dev; then
-                echo "FORBIDDEN :latest tag in overlay"
+              # PROD must not embed DEV namespace or instructor-only lab resources.
+              if grep -R --include='*.yaml' -nE 'namespace:[[:space:]]*packmate-lab' deploy/overlays/prod; then
+                echo "FORBIDDEN: packmate-lab namespace in PROD overlay"
+                exit 1
+              fi
+              if grep -R --include='*.yaml' -nEi 'kind:[[:space:]]*(Notebook|Pipeline|PipelineRun|Workbench)' \
+                   deploy/overlays/prod; then
+                echo "FORBIDDEN: Notebook/Pipeline/Workbench in PROD overlay"
+                exit 1
+              fi
+              # Render both overlays when kustomize/oc available in image (best-effort).
+              if command -v oc >/dev/null 2>&1; then
+                oc kustomize deploy/overlays/dev >/tmp/dev.yaml
+                oc kustomize deploy/overlays/prod >/tmp/prod.yaml
+                grep -q 'namespace: packmate-prod' /tmp/prod.yaml
+                ! grep -qE 'image:.*:latest([[:space:]]|$)' /tmp/prod.yaml
+                grep -q packmate-prod-llm /tmp/prod.yaml
+                echo "KUSTOMIZE_DEV_PROD_OK"
+              else
+                echo "KUSTOMIZE_SKIPPED (oc not in image)"
+              fi
+              # Guard: Pipeline must never deploy to PROD (no apply/set-image in scripts).
+              if grep -R --include='*.yaml' -nE 'oc apply.*packmate-prod|oc set image|argocd sync' \
+                   .tekton/lab 2>/dev/null; then
+                echo "FORBIDDEN: CI must not deploy PROD directly"
                 exit 1
               fi
               echo "MANIFESTS_OK"
@@ -270,6 +308,10 @@ spec:
         results:
           - name: imagestream
           - name: digest
+          - name: IMAGE_URL
+          - name: IMAGE_DIGEST
+          - name: IMAGE_REFERENCE
+          - name: GIT_COMMIT
         steps:
           - name: start-build
             image: image-registry.openshift-image-registry.svc:5000/openshift/cli@sha256:dd7dab5b6ec92b6eecefec17f84bb3df525692f39a44f3d8c22b4469e420f0f3
@@ -296,9 +338,9 @@ spec:
                 echo "Instructor must ensure BC exists once; see docs/INSTRUCTOR_GUIDE.md"
                 exit 1
               fi
+              # Never deploy: no oc apply / oc set image / argocd sync here.
               BUILD="$(oc -n "${NAMESPACE}" start-build packmate-backend --from-dir=backend -o name)"
               echo "Started ${BUILD}"
-              # Follow logs but do not treat log stream end as build completion.
               oc -n "${NAMESPACE}" logs -f "${BUILD}" || true
               for _ in $(seq 1 180); do
                 phase="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.phase}')"
@@ -312,15 +354,28 @@ spec:
               SHA="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.output.to.imageDigest}')"
               [[ -n "${SHA}" ]] || SHA="$(oc -n "${NAMESPACE}" get is packmate-backend -o jsonpath='{.status.tags[?(@.tag=="pipeline")].items[0].image}')"
               [[ -n "${SHA}" ]] || { echo "Unable to resolve image digest"; exit 1; }
+              IMAGE_URL="image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/packmate-backend"
+              IMAGE_REF="${IMAGE_URL}@${SHA}"
+              GIT_COMMIT="$(cat .git-commit 2>/dev/null || echo unknown)"
               printf '%s' "packmate-backend" > "$(results.imagestream.path)"
               printf '%s' "${SHA}" > "$(results.digest.path)"
-              echo "PUBLISH imagestream=packmate-backend digest=${SHA}"
+              printf '%s' "${IMAGE_URL}" > "$(results.IMAGE_URL.path)"
+              printf '%s' "${SHA}" > "$(results.IMAGE_DIGEST.path)"
+              printf '%s' "${IMAGE_REF}" > "$(results.IMAGE_REFERENCE.path)"
+              printf '%s' "${GIT_COMMIT}" > "$(results.GIT_COMMIT.path)"
+              echo "PUBLISH imagestream=packmate-backend digest=${SHA} ref=${IMAGE_REF}"
 
     - name: publish-result
       runAfter: [build-backend]
       params:
         - name: digest
           value: $(tasks.build-backend.results.digest)
+        - name: image_url
+          value: $(tasks.build-backend.results.IMAGE_URL)
+        - name: image_reference
+          value: $(tasks.build-backend.results.IMAGE_REFERENCE)
+        - name: git_commit
+          value: $(tasks.build-backend.results.GIT_COMMIT)
         - name: score
           value: $(tasks.ai-quality-gate.results.score)
         - name: status
@@ -330,22 +385,52 @@ spec:
       taskSpec:
         params:
           - name: digest
+          - name: image_url
+          - name: image_reference
+          - name: git_commit
           - name: score
           - name: status
           - name: scenarios
+        results:
+          - name: IMAGE_URL
+          - name: IMAGE_DIGEST
+          - name: IMAGE_REFERENCE
+          - name: GIT_COMMIT
+          - name: QUALITY_SCORE
+          - name: QUALITY_RESULT
+          - name: PIPELINERUN_NAME
         steps:
           - name: summary
             image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
+              # Derive PipelineRun name from TaskRun pod name (packmate-ci-xxxxx-publish-result-pod).
+              PR_NAME="$(printf '%s' "${POD_NAME}" | sed -E 's/-publish-result.*//;s/-pod$//')"
+              printf '%s' "$(params.image_url)" > "$(results.IMAGE_URL.path)"
+              printf '%s' "$(params.digest)" > "$(results.IMAGE_DIGEST.path)"
+              printf '%s' "$(params.image_reference)" > "$(results.IMAGE_REFERENCE.path)"
+              printf '%s' "$(params.git_commit)" > "$(results.GIT_COMMIT.path)"
+              printf '%s' "$(params.score)" > "$(results.QUALITY_SCORE.path)"
+              printf '%s' "$(params.status)" > "$(results.QUALITY_RESULT.path)"
+              printf '%s' "${PR_NAME}" > "$(results.PIPELINERUN_NAME.path)"
               cat <<EOF
               ========== Packmate CI result ==========
               AI quality gate: $(params.status)
               Scenarios:       $(params.scenarios)
               Score:           $(params.score)
               Threshold:       0.90
-              Backend digest:  $(params.digest)
-              Promote:         scripts/promote-backend-image.sh $(params.digest)
+              IMAGE_URL:       $(params.image_url)
+              IMAGE_DIGEST:    $(params.digest)
+              IMAGE_REFERENCE: $(params.image_reference)
+              GIT_COMMIT:      $(params.git_commit)
+              PIPELINERUN:     ${PR_NAME}
+              Promote (PROD):  scripts/promote-backend-image.sh --pipelinerun ${PR_NAME} --namespace packmate-lab --create-pr
+              NOTE: CI never deploys to packmate-prod — Argo CD Sync only.
               ========================================
               EOF

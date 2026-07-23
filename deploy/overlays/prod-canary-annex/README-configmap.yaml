@@ -1,0 +1,16 @@
+# Optional Argo Rollouts / canary annex — NOT part of the official Packmate lab
+# DEV→PROD path. The lab uses Deployment-based deploy/overlays/prod synced by
+# Argo CD Application packmate-prod.
+#
+# To experiment with canary after installing Argo Rollouts, see docs/CANARY_DEMO.md
+# and the historical manifests retained under this directory for reference only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: packmate-prod-canary-annex-readme
+  annotations:
+    packmate.io/annex: "true"
+data:
+  README: |
+    This directory holds optional canary/Rollout manifests moved out of the
+    official prod overlay. Do not apply for the standard lab.

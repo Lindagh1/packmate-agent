@@ -1,44 +1,37 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Packmate PRODUCTION overlay — destination namespace packmate-prod only.
+# Deployed exclusively by Argo CD Application packmate-prod (manual Sync).
+# Never use :latest. Initial images are lab-v1.0.0 GHCR digests; backend digests
+# are promoted via pull request after Tekton packmate-ci succeeds.
+
 namespace: packmate-prod
 
 resources:
   - ../../base
-  - pdb-backend.yaml
-  - pdb-frontend.yaml
-  - rollout-backend.yaml
-  - service-backend-canary.yaml
-  - analysis-smoke.yaml
-  - analysis-prometheus.yaml
 
 images:
-  # Production images MUST be pinned to an immutable tag or digest — never :latest.
-  # Replace sha-prod with the CI-built tag (e.g. sha-a1b2c3d4) or pin by digest:
-  #
-  #   - name: quay.io/example/packmate-backend
-  #     newName: quay.io/example/packmate-backend
-  #     digest: sha256:0123456789abcdef...
-  #
   - name: quay.io/example/packmate-backend
-    newName: quay.io/example/packmate-backend
-    newTag: sha-prod
+    newName: ghcr.io/lindagh1/packmate-backend
+    digest: sha256:c10fbeb6fbd63ca478e1b8231ddf874ec7ee1c80663b641d802ffca6e826849f
   - name: quay.io/example/packmate-frontend
-    newName: quay.io/example/packmate-frontend
-    newTag: sha-prod
+    newName: ghcr.io/lindagh1/packmate-frontend
+    digest: sha256:d6ade3f968a8e1057cb7e846a6dbded4c0f45f8b1780d16d5dd9d76b55d08305
   - name: quay.io/example/packmate-weather-mcp
-    newName: quay.io/example/packmate-weather-mcp
-    newTag: sha-prod
+    newName: ghcr.io/lindagh1/packmate-weather-mcp
+    digest: sha256:f4a8dcb5407e3bf9dfbb2e494ccb7fc478a377ce074ef2b3f219b55d57443006
   - name: quay.io/example/packmate-baggage-policy-mcp
-    newName: quay.io/example/packmate-baggage-policy-mcp
-    newTag: sha-prod
+    newName: ghcr.io/lindagh1/packmate-baggage-policy-mcp
+    digest: sha256:17432265c056241b6ce89368f9cd1fe0ff5165d3316ef80116285b78b9d58d1a
 
 patches:
-  - path: delete-backend-deployment.yaml
-  - path: service-backend-stable.yaml
-  - path: replicas-patch.yaml
   - path: configmap-patch.yaml
-
-# Optional: enable OpenShift OAuth proxy in front of the app.
-# components:
-#   - ../../components/oauth-proxy
+  - path: replicas-patch.yaml
+  - path: labels-patch.yaml
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: packmate-backend
+    path: secret-name-patch.yaml
