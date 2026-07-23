@@ -289,9 +289,9 @@ spec:
               else
                 echo "KUSTOMIZE_SKIPPED (oc not in image)"
               fi
-              # Guard: Pipeline must never deploy to PROD (no apply/set-image in scripts).
-              if grep -R --include='*.yaml' -nE 'oc apply.*packmate-prod|oc set image|argocd sync' \
-                   .tekton/lab 2>/dev/null; then
+              # Guard: Pipeline scripts must never deploy to PROD (ignore comments).
+              if grep -R --include='*.yaml' -nE '^[[:space:]]+(oc apply.*packmate-prod|oc set image|argocd app sync|argocd sync)' \
+                   .tekton/lab 2>/dev/null | grep -vE 'echo |#|FORBIDDEN|Never deploy|must not'; then
                 echo "FORBIDDEN: CI must not deploy PROD directly"
                 exit 1
               fi
