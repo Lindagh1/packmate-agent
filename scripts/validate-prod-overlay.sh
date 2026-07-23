@@ -69,11 +69,16 @@ if latest_hits:
 else:
     ok("no :latest image tags")
 
-# --- 3) No packmate-lab namespace references --------------------------------
-if "packmate-lab" in text:
-    fail("'packmate-lab' namespace/reference present in rendered prod overlay")
+# --- 3) No packmate-lab as Kubernetes namespace (image-registry path OK) ----
+# After promotion, backend may pull from:
+#   image-registry.../packmate-lab/packmate-backend@sha256:...
+# That string must not appear as metadata.namespace: packmate-lab.
+if re.search(r'(?m)^\s*namespace:\s*packmate-lab\s*$', text):
+    fail("rendered prod overlay sets metadata namespace packmate-lab")
+elif re.search(r'(?m)^\s*namespace:\s*packmate-lab\b', text):
+    fail("packmate-lab used as a Kubernetes namespace field in prod overlay")
 else:
-    ok("no packmate-lab namespace references")
+    ok("no packmate-lab Kubernetes namespace fields (image-registry path allowed)")
 
 # --- 4) Secret naming: packmate-llm must be packmate-prod-llm ---------------
 if re.search(r'\bname:\s*packmate-llm\b', text):
