@@ -73,3 +73,9 @@ Use before each Packmate v2 (DEV → PROD) session.
 
 - [ ] EvalHub instance — else `EVALHUB_OPTIONAL_NOT_CONFIGURED`
 - [ ] Argo Rollouts / canary annex (`deploy/overlays/prod-canary-annex/`) — annex only
+
+- [ ] `INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup`
+- [ ] Argo CD shows packmate-lab and packmate-prod
+- [ ] `make configure-promotion-registry` and `make verify-promotion-registry`
+- [ ] `make verify-gitops` PASS
+- [ ] Participant in `packmate-lab-users`; SSO re-login verified

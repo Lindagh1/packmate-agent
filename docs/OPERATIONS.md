@@ -160,3 +160,8 @@ The `packmate-prod` split (`prepare-prod.sh`, `promote-backend-image.sh --create
 this run; `make validate-prod` and the repository test suite pass, but a fresh
 live-cluster DEV→PROD→rollback cycle has not yet been re-logged here — see
 `docs/implementation/LAB_ACCEPTANCE_REPORT.md` for current status.
+
+## Portable PROD images
+
+Never commit OpenShift internal-registry digests to the shared PROD overlay. Use GHCR promotion via publish-candidate + promote-backend-image.sh.
+

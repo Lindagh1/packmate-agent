@@ -216,3 +216,12 @@ The participant guide was restructured into Modules A–F (OpenShift AI, Develop
 - SSO group/`promoter`-role propagation (log out/in) on a real Argo CD instance with `spec.rbac.scopes` patched by `configure-argocd-lab-rbac.sh`.
 
 **Recommendation:** run the § 1–10 acceptance procedure again end-to-end on a fresh sandbox, extended through Modules D–F, before the first graded DEV→PROD class, and log the result either as a new dated section here or as a fresh acceptance report. Until then, treat the PROD promotion/rollback/Argo-RBAC path as **implemented and offline-validated**, not yet **live-cluster acceptance-tested**.
+
+## Addendum — GitOps dual apps + portable PROD (2026-07-30)
+
+| Item | Result |
+|------|--------|
+| Root cause of e7442bcc | OLD_SANDBOX_REFERENCE (manifest missing) |
+| PROD baseline | `ghcr.io/lindagh1/packmate-backend@sha256:c10fbeb6…` |
+| Applications | packmate-lab + packmate-prod under AppProject packmate |
+| Participant RBAC | get packmate/*; sync packmate-prod |

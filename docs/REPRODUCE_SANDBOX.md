@@ -209,3 +209,7 @@ after the run above. `make validate-prod` (offline render checks) and the reposi
 test suite pass; a full live-cluster DEV→PROD→rollback cycle should be re-run and
 logged here (or in `docs/implementation/LAB_ACCEPTANCE_REPORT.md`) before the first
 graded class on a new cluster.
+
+### GitOps + portable PROD
+
+Instructor: `INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup` then `make configure-promotion-registry`. PROD overlay must use GHCR digests only — internal OpenShift registry digests are not portable across sandboxes.

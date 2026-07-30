@@ -370,3 +370,41 @@ asyncio.run(main())
 '
 ```
 
+## GitOps Operator not installed
+
+Symptom: `BLOCKED_GITOPS_OPERATOR_NOT_INSTALLED` or bootstrap fails GitOps check.
+
+Fix (instructor only):
+
+```bash
+INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup
+make verify-gitops
+```
+
+Never install the Community Argo CD Operator. Never share the local Argo CD admin password.
+
+## Argo CD dashboard shows only packmate-prod
+
+Checks:
+
+1. `oc get application packmate-lab -n openshift-gitops`
+2. AppProject `packmate` destinations include `packmate-lab` and `packmate-prod`
+3. Role policies include `get, packmate/*`
+4. User is in OpenShift group `packmate-lab-users`
+5. Log out of Argo CD → Log in via OpenShift again → User Info shows the group
+
+## PROD `manifest unknown` / ErrImagePull for packmate-backend
+
+Cause: PROD overlay referenced an OpenShift **internal** registry digest from another sandbox.
+
+Fix: restore the durable GHCR baseline (never `oc set image`). Diagnose:
+
+```bash
+./scripts/diagnose-packmate-image-reference.sh \
+  --image-reference "<failing-ref>" \
+  --source-namespace packmate-lab \
+  --target-namespace packmate-prod
+```
+
+Expected: `ROOT_CAUSE=OLD_SANDBOX_REFERENCE`. Promote via external GHCR only.
+

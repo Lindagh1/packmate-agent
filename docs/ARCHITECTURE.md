@@ -128,3 +128,7 @@ The Pipeline **never** deploys to `packmate-prod` (guarded by `validate-manifest
 - `/metrics` Prometheus exposition
 - Optional OTLP traces (including `mcp.call_tool` spans)
 - `/health` and `/ready` on app and MCP servers
+
+## GitOps dual applications
+
+AppProject `packmate` destinations: `packmate-lab` (DEV overlay) and `packmate-prod` (PROD overlay). Tekton builds internally, publishes a durable GHCR candidate, then a PR updates PROD; Argo CD Sync applies PROD.

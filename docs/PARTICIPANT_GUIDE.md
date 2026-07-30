@@ -621,3 +621,7 @@ Place each capture immediately after the matching step in your notes or Word exp
 | Historical Streamlit / S2I path | Retired — not part of Packmate v2 |
 
 See also: `docs/ARCHITECTURE.md`, `docs/REPRODUCE_SANDBOX.md`, `docs/INSTRUCTOR_GUIDE.md`, `docs/OPERATIONS.md`, `docs/DOCX_ASSEMBLY_PLAN.md`.
+
+## Argo CD applications
+
+OpenShift GitOps is preinstalled by the instructor. Log in via **OpenShift** (never local admin). The dashboard must show **packmate-lab** (DEV, already Synced) and **packmate-prod** (manual Sync after promotion).

@@ -108,3 +108,6 @@ cd ../frontend && npm ci && npm run test -- --run
 ## License
 
 See repository license file.
+## OpenShift GitOps (instructor)
+
+Install official Red Hat OpenShift GitOps, then run `INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup`. The Argo CD dashboard must show **packmate-lab** and **packmate-prod** under AppProject `packmate`. Participants use **Log in via OpenShift** only. PROD images must be durable GHCR digests — never OpenShift internal-registry digests from another sandbox.

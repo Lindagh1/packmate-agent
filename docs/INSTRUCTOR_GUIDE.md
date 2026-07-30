@@ -248,3 +248,11 @@ Participant Markdown source (Packmate v2 DEV→PROD content):
 Assembly instructions for editors (cover, TOC, captions, page breaks — **no** auto-generated DOCX):
 
 `docs/DOCX_ASSEMBLY_PLAN.md`
+
+## Instructor GitOps setup
+
+1. Install Red Hat OpenShift GitOps (or set `INSTALL_OPENSHIFT_GITOPS_OPERATOR=true`).
+2. Run `make instructor-setup`.
+3. Confirm Argo CD shows **packmate-lab** and **packmate-prod**.
+4. Run `make configure-promotion-registry` then `make verify-gitops`.
+5. Never share the local Argo CD admin password.
