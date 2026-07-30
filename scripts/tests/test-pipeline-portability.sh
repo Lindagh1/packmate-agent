@@ -74,6 +74,7 @@ fi
 TMPBIN="$(mktemp -d)"
 cleanup() { rm -rf "${TMPBIN}"; }
 trap cleanup EXIT
+unset PACKMATE_PIPELINE_PYTHON_IMAGE PACKMATE_PIPELINE_CLI_IMAGE PACKMATE_PIPELINE_IMAGE_OVERRIDE || true
 
 cat > "${TMPBIN}/oc" <<'EOF'
 #!/usr/bin/env bash
