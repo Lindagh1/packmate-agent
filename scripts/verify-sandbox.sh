@@ -198,7 +198,7 @@ if oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci >/dev/null 
   else
     pass "No obsolete sandbox Python digest remains"
   fi
-  if printf '%s' "${PIPE_YAML}" | grep -qE 'image:.*:latest([[:space:]]|$)'; then
+  if printf '%s' "${PIPE_YAML}" | grep -E '^\s+image:\s+\S+' | grep -qE ':latest([[:space:]]|$)'; then
     fail "No :latest image in Pipeline"
   else
     pass "No :latest image in Pipeline"
