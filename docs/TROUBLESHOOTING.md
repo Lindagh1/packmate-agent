@@ -14,6 +14,46 @@
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
 | Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
+## Tekton `packmate-ci` — `manifest unknown` / `ErrImagePull` for Python
+
+Symptom:
+
+```text
+manifest unknown
+ErrImagePull
+image-registry.../openshift/python@sha256:ae2c1317...
+```
+
+Cause: a **sandbox-specific** Python ImageStream digest was committed into the Pipeline. Digests rotate between OpenTLC sandboxes.
+
+Fix: do **not** edit Pipeline YAML by hand. Re-run:
+
+```bash
+make bootstrap
+```
+
+Bootstrap resolves `openshift/python:3.12-ubi9` on the **current** cluster, renders `.tekton/lab/packmate-ci.yaml.tpl`, and applies the generated Pipeline. If the ImageStreamTag rotates later, run `make bootstrap` again.
+
+## Tekton / Workbench — `No matching distribution found for json-repair>=0.30.0`
+
+Cause: the RHOAI 3.4 package mirror exposes **`json-repair==0.25.3`** only. Packmate pins that version; Packmate’s parser uses `json_repair.loads`, which exists in 0.25.3.
+
+Fix: pull latest `packmate-v2` and re-run `make verify-python-deps`. Do **not** widen the pin to public PyPI.
+
+## Tekton / Workbench — `No matching distribution found for mcp>=1.28`
+
+Cause: the RHOAI 3.4 mirror exposes MCP **1.26.0 / 1.27.0 / 1.27.2** only. Packmate pins **`mcp==1.27.2`**.
+
+## ImportError: `streamablehttp_client`
+
+Cause: older MCP code imported the unsupported symbol. Packmate uses the MCP v1 API:
+
+```python
+from mcp.client.streamable_http import streamable_http_client
+```
+
+Fix: pull latest `packmate-v2` (do not patch imports in the Workbench by hand).
+
 ## Tekton `packmate-ci` — `requirements-dev.txt` not found
 
 Symptom:
@@ -31,7 +71,7 @@ Cause:
 
 Fix:
 
-1. Ensure Pipeline scripts use `workingDir: $(workspaces.source.path)/backend` for pytest and the quality gate (already in `.tekton/lab/packmate-ci.yaml`).
+1. Ensure Pipeline scripts use `workingDir: $(workspaces.source.path)/backend` for pytest and the quality gate (rendered from `.tekton/lab/packmate-ci.yaml.tpl`).
 2. Re-start the PipelineRun with a **VolumeClaimTemplate** for workspace `source` (**2Gi**, see `.tekton/lab/packmate-ci-run.yaml`), **or**:
 
 ```bash

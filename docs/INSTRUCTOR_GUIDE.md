@@ -200,7 +200,7 @@ Participants must **not** create the custom model endpoint, enter model URLs/tok
 
 ## Pipelines
 
-Apply via bootstrap (`CREATE_PIPELINE=true`). Participants only **Start** `packmate-ci`, always with a **2Gi VolumeClaimTemplate** for workspace `source` (never Empty Directory). Pipeline builds **backend only**, into `packmate-lab`. Promote the resulting digest with `scripts/promote-backend-image.sh --pipelinerun <name> --namespace packmate-lab --create-pr` (opens a PR; never pushes to `packmate-v2` directly, never touches `packmate-prod`).
+Apply via bootstrap (`CREATE_PIPELINE=true`). Bootstrap resolves `openshift/python:3.12-ubi9` to the current sandbox digest, checks RHOAI 3.4 package pins (`mcp==1.27.2`, `json-repair==0.25.3`, `pydantic==2.13.1`), renders `.tekton/lab/packmate-ci.yaml.tpl`, and applies the generated Pipeline — never commit a sandbox-specific Python digest. Participants only **Start** `packmate-ci`, always with a **2Gi VolumeClaimTemplate** for workspace `source` (never Empty Directory). Pipeline builds **backend only**, into `packmate-lab`. Promote the resulting digest with `scripts/promote-backend-image.sh --pipelinerun <name> --namespace packmate-lab --create-pr` (opens a PR; never pushes to `packmate-v2` directly, never touches `packmate-prod`). After ImageStream rotation, re-run `make bootstrap` to re-render.
 
 ## GitOps
 

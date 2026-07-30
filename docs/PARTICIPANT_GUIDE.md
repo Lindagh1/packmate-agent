@@ -319,6 +319,7 @@ You do **not** write Pipeline YAML. Bootstrap already installed the namespace-sc
 5. Click **Start**.
 6. Keep defaults (repository URL and revision **`packmate-v2`**) unless the instructor says otherwise.
 7. For workspace **`source`**, choose **VolumeClaimTemplate** with **2 GiB**. **Never select Empty Directory** — clone output would not be visible to later tasks (`test`, `ai-quality-gate`, `validate-manifests`, `build-backend`).
+8. Do **not** edit Pipeline YAML or `requirements*.txt`. `make bootstrap` already resolved the current cluster’s `openshift/python:3.12-ubi9` digest and pinned Python packages to the RHOAI 3.4 mirror. If you see `manifest unknown` for a Python image, re-run `make bootstrap` (never hand-edit digests).
 8. Click **Start** again to create the PipelineRun.
 
 > **Pro Tip:**

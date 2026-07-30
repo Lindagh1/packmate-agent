@@ -8,7 +8,18 @@
 
 ---
 
-## 1. Environment
+## 13. Addendum — portable Pipeline Python + RHOAI deps (2026-07-30)
+
+| Item | Result |
+|------|--------|
+| Template | `.tekton/lab/packmate-ci.yaml.tpl` with `__PACKMATE_PIPELINE_PYTHON_IMAGE__` |
+| Resolve | `scripts/resolve-pipeline-python-image.sh` → internal digest of `openshift/python:3.12-ubi9` |
+| Deps | `mcp==1.27.2`, `json-repair==0.25.3`, `pydantic==2.13.1` (RHOAI 3.4 cpu-ubi9 x86_64) |
+| MCP API | `streamable_http_client` |
+| Check | `make verify-python-deps` / `scripts/check-rhoai-python-dependencies.sh` |
+| Bootstrap | resolve → deps check → render → apply rendered Pipeline (never apply obsolete digest YAML) |
+
+Do not commit rendered digests. Participants never hand-edit Tekton YAML or requirements.
 
 | Item | Value |
 |------|-------|

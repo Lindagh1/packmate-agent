@@ -52,8 +52,11 @@ cp config/sandbox.env.example config/sandbox.env
 ## Commands
 
 ```bash
-make preflight            # PASS/WARNING/BLOCKED/OPTIONAL_UNAVAILABLE
-make bootstrap            # DEV workloads + AI assets + PROD prep (confirmation prompt; SKIP_CONFIRM=true for CI-like smoke)
+make preflight            # PASS/WARNING/BLOCKED/OPTIONAL_UNAVAILABLE (+ RHOAI mirror lightweight)
+make bootstrap            # resolve Python digest → deps check → render/apply Pipeline → DEV + PROD prep
+make verify-python-deps   # clean venv install against the RHOAI 3.4 mirror (no public PyPI)
+make resolve-pipeline-python-image
+make render-pipeline      # writes .tekton/lab/generated/packmate-ci.rendered.yaml (gitignored)
 make prepare-prod          # Re-run PROD prep standalone (idempotent; namespace/Secret/RBAC/Argo only)
 make configure-argocd-rbac # SSO group + AppProject "promoter" role, standalone
 make verify / verify-dev  # DEV readiness (non-destructive)
@@ -63,6 +66,10 @@ make validate-prod        # Static PROD overlay render checks (offline, no clust
 make promote               # scripts/promote-backend-image.sh (see --help)
 make cleanup                # interactive, DEV (packmate-lab) only
 ```
+
+### Why the Pipeline Python digest is not in Git
+
+`openshift/python:3.12-ubi9` resolves to a different immutable digest on each OpenTLC sandbox. Committing one digest causes `manifest unknown` / `ErrImagePull` on the next sandbox. Bootstrap always re-resolves and re-renders from `.tekton/lab/packmate-ci.yaml.tpl`. The RHOAI 3.4 mirror also exposes fewer package versions than public PyPI — Packmate pins `mcp`, `json-repair`, and `pydantic` accordingly.
 
 ### Namespace policy
 
