@@ -61,12 +61,11 @@ bash "${ROOT}/scripts/apply-packmate-argocd.sh"
 # Optional: wait briefly for DEV auto-sync
 log "==> Waiting for Application/packmate-lab sync (up to 180s)"
 for _ in $(seq 1 36); do
-  sync="$(oc -n openshift-gitops get application packmate-lab -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
-  health="$(oc -n openshift-gitops get application packmate-lab -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+  sync="$(oc -n openshift-gitops get application.argoproj.io packmate-lab -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+  health="$(oc -n openshift-gitops get application.argoproj.io packmate-lab -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
   log "    packmate-lab sync=${sync:-?} health=${health:-?}"
   [[ "${sync}" == "Synced" && "${health}" == "Healthy" ]] && break
-  # Trigger refresh if Unknown
-  oc -n openshift-gitops annotate application packmate-lab \
+  oc -n openshift-gitops annotate application.argoproj.io/packmate-lab \
     argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
   sleep 5
 done

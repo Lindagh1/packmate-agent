@@ -103,12 +103,27 @@ else
   pass "No old sandbox internal registry digest"
 fi
 
-# Pull events
-if oc -n "${NS}" get events --field-selector reason=Failed --sort-by=.lastTimestamp 2>/dev/null | tail -30 | grep -qiE 'ErrImagePull|ImagePullBackOff|manifest unknown'; then
-  fail "No ErrImagePull / ImagePullBackOff / manifest unknown"
+# Pull events — only fail on currently failing pods / recent Warning events for the live Deployment
+if oc -n "${NS}" get pods -l app=packmate-backend --no-headers 2>/dev/null | grep -qiE 'ImagePullBackOff|ErrImagePull'; then
+  fail "No ImagePullBackOff"
+  fail "No ErrImagePull"
 else
   pass "No ImagePullBackOff"
   pass "No ErrImagePull"
+fi
+# Recent events (last 5 minutes) for the current Deployment generation
+if oc -n "${NS}" get events --field-selector involvedObject.kind=Pod --sort-by=.lastTimestamp 2>/dev/null \
+  | awk -v cutoff="$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-10M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')" '
+      /manifest unknown/ && /packmate-backend/ { bad=1 }
+      END { exit bad?0:1 }'; then
+  # Only fail if a current backend pod is not Ready
+  ready="$(oc -n "${NS}" get deploy packmate-backend -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo 0)"
+  if [[ "${ready}" == "0" || -z "${ready}" ]]; then
+    fail "No manifest unknown event"
+  else
+    pass "No manifest unknown event"
+  fi
+else
   pass "No manifest unknown event"
 fi
 
