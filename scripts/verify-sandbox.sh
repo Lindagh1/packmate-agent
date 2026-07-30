@@ -28,6 +28,17 @@ info() { printf 'INFO  %s\n' "$*"; }
 
 printf '=== Packmate verify (%s) ===\n' "${PACKMATE_NAMESPACE}"
 
+# Workbench / repository checks
+if [[ -d "${ROOT}/.git" ]]; then
+  pass "Workbench repository is a valid Git clone"
+  BR="$(git -C "${ROOT}" branch --show-current 2>/dev/null || true)"
+  [[ "${BR}" == "packmate-v2" ]] && pass "Repository branch is packmate-v2" \
+    || fail "Repository branch is packmate-v2 (got '${BR:-detached}')"
+else
+  fail "Workbench repository is a valid Git clone"
+  fail "Repository branch is packmate-v2"
+fi
+
 # DSP labels (best-effort)
 if oc get project "${PACKMATE_NAMESPACE}" -o jsonpath='{.metadata.labels}' 2>/dev/null | grep -q opendatahub; then
   pass "Data Science Project labels present"
@@ -207,13 +218,13 @@ if oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci >/dev/null 
     pass "Pipeline Python ImageStreamTag available"
     CURRENT_DIGEST="$(oc get istag python:3.12-ubi9 -n openshift -o jsonpath='{.image.metadata.name}' 2>/dev/null || true)"
     EXPECTED_IMG="image-registry.openshift-image-registry.svc:5000/openshift/python@${CURRENT_DIGEST}"
-    DEPLOYED_PY="$(printf '%s' "${PIPE_YAML}" | grep -E 'image: .*openshift/python@' | head -1 | awk '{print $2}' || true)"
-    if [[ -n "${CURRENT_DIGEST}" && "${DEPLOYED_PY}" == "${EXPECTED_IMG}" ]]; then
+    if [[ -n "${CURRENT_DIGEST}" ]] && printf '%s' "${PIPE_YAML}" | grep -q "${CURRENT_DIGEST}"; then
       pass "Pipeline Python image resolved by digest"
       pass "Deployed Pipeline uses current sandbox Python digest"
-    elif [[ -n "${DEPLOYED_PY}" && "${DEPLOYED_PY}" == *"@sha256:"* ]]; then
+    elif printf '%s' "${PIPE_YAML}" | grep -qE 'openshift/python@sha256:'; then
       pass "Pipeline Python image resolved by digest"
-      fail "Deployed Pipeline uses current sandbox Python digest (re-run make bootstrap to re-render; deployed=${DEPLOYED_PY})"
+      fail "Deployed Pipeline uses current sandbox Python digest"
+      info "Pipeline image changed. Run make bootstrap to re-render and reapply packmate-ci."
     else
       fail "Pipeline Python image resolved by digest"
       fail "Deployed Pipeline uses current sandbox Python digest"
@@ -224,9 +235,9 @@ if oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci >/dev/null 
   TPL="${ROOT}/.tekton/lab/packmate-ci.yaml.tpl"
   if [[ -f "${TPL}" ]]; then
     if grep -q "${OBSOLETE_PY_DIGEST}" "${TPL}"; then
-      fail "Pipeline template free of obsolete digest"
+      fail "Pipeline template contains no sandbox-specific digest"
     else
-      pass "Pipeline template free of obsolete digest"
+      pass "Pipeline template contains no sandbox-specific digest"
     fi
     if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}"; then
       pass "Pipeline template uses portable placeholder"
@@ -234,22 +245,26 @@ if oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci >/dev/null 
       fail "Pipeline template uses portable placeholder"
     fi
   fi
+  # Digest rotation notice
+  CURRENT_DIGEST="$(oc get istag python:3.12-ubi9 -n openshift -o jsonpath='{.image.metadata.name}' 2>/dev/null || true)"
+  if [[ -n "${CURRENT_DIGEST}" ]] && ! printf '%s' "${PIPE_YAML}" | grep -q "${CURRENT_DIGEST}"; then
+    info "Pipeline image changed. Run make bootstrap to re-render and reapply packmate-ci."
+  fi
 else
   info "Pipeline/packmate-ci absent (OK if Pipelines skipped)"
 fi
 
 # RHOAI dependency compatibility (full)
 if bash "${ROOT}/scripts/check-rhoai-python-dependencies.sh" >/tmp/packmate-verify-deps.txt 2>&1; then
-  pass "RHOAI Python package mirror reachable"
-  pass "All direct Python dependencies resolvable"
+  pass "RHOAI dependency compatibility passed"
   pass "MCP SDK version is 1.27.2"
   pass "MCP streamable_http_client import supported"
   pass "json-repair version is 0.25.3"
-  pass "json-repair compatibility tests passed"
   pass "Backend dependency installation works in isolation"
   pass "pip check passed"
-  if [[ -f "${ROOT}/.tekton/lab/generated/packmate-ci.rendered.yaml" ]]; then
-    if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${ROOT}/.tekton/lab/generated/packmate-ci.rendered.yaml"; then
+  RENDERED="${ROOT}/.generated/tekton/packmate-ci.yaml"
+  if [[ -f "${RENDERED}" ]]; then
+    if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${RENDERED}"; then
       fail "Pipeline rendered without unresolved placeholders"
     else
       pass "Pipeline rendered without unresolved placeholders"

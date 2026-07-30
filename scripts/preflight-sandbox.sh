@@ -31,6 +31,26 @@ printf '\n=== Packmate preflight ===\n'
 printf 'user=%s context=%s\n' "$(oc whoami)" "$(oc config current-context)"
 printf 'namespace=%s model=%s/%s\n\n' "${PACKMATE_NAMESPACE}" "${MODEL_NAMESPACE}" "${MODEL_ID}"
 
+# Repository root / branch
+if [[ -d "${ROOT}/.git" ]]; then
+  pass "Repository root is a valid Git clone (${ROOT})"
+  BR="$(git -C "${ROOT}" branch --show-current 2>/dev/null || true)"
+  if [[ "${BR}" == "packmate-v2" ]]; then
+    pass "Current branch is packmate-v2"
+  else
+    block "Current branch is packmate-v2 (got '${BR:-detached}')"
+  fi
+else
+  block "Repository root is a valid Git clone (missing .git under ${ROOT})"
+fi
+
+# config/sandbox.env
+if [[ -f "${ROOT}/config/sandbox.env" ]]; then
+  pass "config/sandbox.env present"
+else
+  block "config/sandbox.env missing — copy from config/sandbox.env.example"
+fi
+
 # oc / connection
 pass "oc installed and authenticated as $(oc whoami)"
 
@@ -199,6 +219,22 @@ if oc get istag python:3.12-ubi9 -n openshift >/dev/null 2>&1; then
   pass "Pipeline Python ImageStreamTag openshift/python:3.12-ubi9 available"
 else
   block "Pipeline Python ImageStreamTag openshift/python:3.12-ubi9 missing"
+fi
+
+TPL="${ROOT}/.tekton/lab/packmate-ci.yaml.tpl"
+if [[ -f "${TPL}" ]]; then
+  if grep -qE 'sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb' "${TPL}"; then
+    block "Tracked Pipeline template contains obsolete sandbox Python digest"
+  else
+    pass "Tracked Pipeline template contains no sandbox-specific Python digest"
+  fi
+  if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}"; then
+    pass "Pipeline template uses portable Python image placeholder"
+  else
+    block "Pipeline template missing __PACKMATE_PIPELINE_PYTHON_IMAGE__ placeholder"
+  fi
+else
+  block "Missing .tekton/lab/packmate-ci.yaml.tpl"
 fi
 
 printf '\n=== Summary ===\n'
