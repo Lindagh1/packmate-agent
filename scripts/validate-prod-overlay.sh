@@ -69,16 +69,20 @@ if latest_hits:
 else:
     ok("no :latest image tags")
 
-# --- 3) No packmate-lab as Kubernetes namespace (image-registry path OK) ----
-# After promotion, backend may pull from:
-#   image-registry.../packmate-lab/packmate-backend@sha256:...
-# That string must not appear as metadata.namespace: packmate-lab.
+# --- 2b) No OpenShift internal-registry PROD images (not portable) ----------
+if "image-registry.openshift-image-registry.svc" in text or "default-route-openshift-image-registry" in text:
+    fail("PROD overlay must not reference the OpenShift internal registry (use durable GHCR digests)")
+else:
+    ok("no OpenShift internal-registry image references in PROD")
+
+# --- 3) No packmate-lab as Kubernetes namespace ----------------------------
+# Portable PROD must not use packmate-lab as metadata.namespace.
 if re.search(r'(?m)^\s*namespace:\s*packmate-lab\s*$', text):
     fail("rendered prod overlay sets metadata namespace packmate-lab")
 elif re.search(r'(?m)^\s*namespace:\s*packmate-lab\b', text):
     fail("packmate-lab used as a Kubernetes namespace field in prod overlay")
 else:
-    ok("no packmate-lab Kubernetes namespace fields (image-registry path allowed)")
+    ok("no packmate-lab Kubernetes namespace fields")
 
 # --- 4) Secret naming: packmate-llm must be packmate-prod-llm ---------------
 if re.search(r'\bname:\s*packmate-llm\b', text):

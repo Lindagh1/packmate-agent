@@ -6,7 +6,7 @@
 # Participant: OpenShift Console → Pipelines → packmate-ci → Start
 # IMPORTANT: workspace "source" MUST use a VolumeClaimTemplate (shared PVC).
 #            Empty Directory does NOT persist between tasks — clone output is lost.
-# Visual path: clone → test → ai-quality-gate → validate-manifests → build-backend → publish-result
+# Visual path: clone → test → ai-quality-gate → validate-manifests → build-backend → publish-candidate → publish-result
 # Namespace-scoped only. Does not deploy production.
 # Start a run: oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
 ---
@@ -395,28 +395,134 @@ spec:
               SHA="$(oc -n "${NAMESPACE}" get "${BUILD}" -o jsonpath='{.status.output.to.imageDigest}')"
               [[ -n "${SHA}" ]] || SHA="$(oc -n "${NAMESPACE}" get is packmate-backend -o jsonpath='{.status.tags[?(@.tag=="pipeline")].items[0].image}')"
               [[ -n "${SHA}" ]] || { echo "Unable to resolve image digest"; exit 1; }
+              GIT_COMMIT="$(cat .git-commit 2>/dev/null || echo unknown)"
+              GIT_SHORT="$(printf '%s' "${GIT_COMMIT}" | cut -c1-7)"
+              POD_NAME="$(cat /etc/hostname 2>/dev/null || true)"
+              PR_HINT="$(printf '%s' "${POD_NAME}" | sed -E 's/-build-backend.*//;s/-start-build.*//;s/-pod$//')"
+              CANDIDATE_TAG="${GIT_SHORT}-${PR_HINT:-pipeline}"
+              # Retain a unique ImageStreamTag (never :latest) until external publication completes.
+              oc -n "${NAMESPACE}" tag "packmate-backend@${SHA}" "packmate-backend:${CANDIDATE_TAG}" >/dev/null
               IMAGE_URL="image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/packmate-backend"
               IMAGE_REF="${IMAGE_URL}@${SHA}"
-              GIT_COMMIT="$(cat .git-commit 2>/dev/null || echo unknown)"
               printf '%s' "packmate-backend" > "$(results.imagestream.path)"
               printf '%s' "${SHA}" > "$(results.digest.path)"
               printf '%s' "${IMAGE_URL}" > "$(results.IMAGE_URL.path)"
               printf '%s' "${SHA}" > "$(results.IMAGE_DIGEST.path)"
               printf '%s' "${IMAGE_REF}" > "$(results.IMAGE_REFERENCE.path)"
               printf '%s' "${GIT_COMMIT}" > "$(results.GIT_COMMIT.path)"
-              echo "PUBLISH imagestream=packmate-backend digest=${SHA} ref=${IMAGE_REF}"
+              echo "INTERNAL imagestream=packmate-backend tag=${CANDIDATE_TAG} digest=${SHA} ref=${IMAGE_REF}"
+
+    - name: publish-candidate
+      runAfter: [build-backend]
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: cli-image
+          value: $(params.cli-image)
+        - name: internal_reference
+          value: $(tasks.build-backend.results.IMAGE_REFERENCE)
+        - name: git_commit
+          value: $(tasks.build-backend.results.GIT_COMMIT)
+      taskSpec:
+        params:
+          - name: cli-image
+          - name: internal_reference
+          - name: git_commit
+        workspaces:
+          - name: source
+        results:
+          - name: INTERNAL_IMAGE_REFERENCE
+          - name: PROMOTION_IMAGE_URL
+          - name: PROMOTION_IMAGE_TAG
+          - name: PROMOTION_IMAGE_DIGEST
+          - name: PROMOTION_IMAGE_REFERENCE
+          - name: PROMOTION_REGISTRY_MODE
+          - name: PROMOTION_REGISTRY_VERIFIED
+        steps:
+          - name: publish
+            image: quay.io/skopeo/stable@sha256:2a4a89c5f8d73cb7177e3ad4af63551d17183a30d603b651bdf3c0f1c6f2952d
+            workingDir: $(workspaces.source.path)
+            env:
+              - name: NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: PACKMATE_PROMOTION_REGISTRY
+                value: ghcr.io
+              - name: PACKMATE_PROMOTION_REGISTRY_OWNER
+                value: Lindagh1
+              - name: PACKMATE_PROMOTION_IMAGE_NAME
+                value: packmate-backend
+              - name: PACKMATE_PROMOTION_REGISTRY_MODE
+                value: external
+              - name: PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE
+                value: "true"
+            volumeMounts:
+              - name: ghcr-push
+                mountPath: /var/run/secrets/packmate-ghcr-push
+                readOnly: true
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              INTERNAL="$(params.internal_reference)"
+              GIT_COMMIT="$(params.git_commit)"
+              GIT_SHORT="$(printf '%s' "${GIT_COMMIT}" | cut -c1-7)"
+              PR_NAME="$(printf '%s' "${POD_NAME}" | sed -E 's/-publish-candidate.*//;s/-pod$//')"
+              EXT_TAG="${GIT_SHORT}-${PR_NAME}"
+              EXT_REPO="${PACKMATE_PROMOTION_REGISTRY}/${PACKMATE_PROMOTION_REGISTRY_OWNER}/${PACKMATE_PROMOTION_IMAGE_NAME}"
+              AUTHFILE="$(mktemp)"
+              cleanup() { rm -f "${AUTHFILE}"; }
+              trap cleanup EXIT
+              if [[ ! -f /var/run/secrets/packmate-ghcr-push/.dockerconfigjson ]]; then
+                echo "ERROR: push Secret packmate-ghcr-push not mounted"
+                echo "Instructor: make configure-promotion-registry"
+                exit 1
+              fi
+              cp /var/run/secrets/packmate-ghcr-push/.dockerconfigjson "${AUTHFILE}"
+              chmod 600 "${AUTHFILE}"
+              echo "Copying ${INTERNAL} -> ${EXT_REPO}:${EXT_TAG}"
+              skopeo copy --authfile "${AUTHFILE}" --all "docker://${INTERNAL}" "docker://${EXT_REPO}:${EXT_TAG}"
+              DIGEST="$(skopeo inspect --authfile "${AUTHFILE}" "docker://${EXT_REPO}:${EXT_TAG}" --format '{{.Digest}}')"
+              [[ "${DIGEST}" == sha256:* ]] || { echo "Missing destination digest"; exit 1; }
+              EXT_REF="${EXT_REPO}@${DIGEST}"
+              skopeo inspect --authfile "${AUTHFILE}" "docker://${EXT_REF}" >/dev/null
+              # Reject writing internal refs as promotion results
+              case "${EXT_REF}" in
+                image-registry.openshift-image-registry.svc:*|*.svc:*|172.30.*)
+                  echo "ERROR: promotion reference must be external"; exit 1 ;;
+              esac
+              printf '%s' "${INTERNAL}" > "$(results.INTERNAL_IMAGE_REFERENCE.path)"
+              printf '%s' "${EXT_REPO}" > "$(results.PROMOTION_IMAGE_URL.path)"
+              printf '%s' "${EXT_TAG}" > "$(results.PROMOTION_IMAGE_TAG.path)"
+              printf '%s' "${DIGEST}" > "$(results.PROMOTION_IMAGE_DIGEST.path)"
+              printf '%s' "${EXT_REF}" > "$(results.PROMOTION_IMAGE_REFERENCE.path)"
+              printf '%s' "${PACKMATE_PROMOTION_REGISTRY_MODE}" > "$(results.PROMOTION_REGISTRY_MODE.path)"
+              printf '%s' "true" > "$(results.PROMOTION_REGISTRY_VERIFIED.path)"
+              echo "PROMOTION_IMAGE_REFERENCE=${EXT_REF}"
+        volumes:
+          - name: ghcr-push
+            secret:
+              secretName: packmate-ghcr-push
+              optional: false
 
     - name: publish-result
-      runAfter: [build-backend]
+      runAfter: [publish-candidate]
       params:
         - name: python-image
           value: $(params.python-image)
         - name: digest
-          value: $(tasks.build-backend.results.digest)
+          value: $(tasks.publish-candidate.results.PROMOTION_IMAGE_DIGEST)
         - name: image_url
-          value: $(tasks.build-backend.results.IMAGE_URL)
+          value: $(tasks.publish-candidate.results.PROMOTION_IMAGE_URL)
         - name: image_reference
-          value: $(tasks.build-backend.results.IMAGE_REFERENCE)
+          value: $(tasks.publish-candidate.results.PROMOTION_IMAGE_REFERENCE)
+        - name: internal_reference
+          value: $(tasks.publish-candidate.results.INTERNAL_IMAGE_REFERENCE)
         - name: git_commit
           value: $(tasks.build-backend.results.GIT_COMMIT)
         - name: score
@@ -431,6 +537,7 @@ spec:
           - name: digest
           - name: image_url
           - name: image_reference
+          - name: internal_reference
           - name: git_commit
           - name: score
           - name: status
@@ -439,6 +546,8 @@ spec:
           - name: IMAGE_URL
           - name: IMAGE_DIGEST
           - name: IMAGE_REFERENCE
+          - name: INTERNAL_IMAGE_REFERENCE
+          - name: PROMOTION_IMAGE_REFERENCE
           - name: GIT_COMMIT
           - name: QUALITY_SCORE
           - name: QUALITY_RESULT
@@ -454,11 +563,12 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              # Derive PipelineRun name from TaskRun pod name (packmate-ci-xxxxx-publish-result-pod).
               PR_NAME="$(printf '%s' "${POD_NAME}" | sed -E 's/-publish-result.*//;s/-pod$//')"
               printf '%s' "$(params.image_url)" > "$(results.IMAGE_URL.path)"
               printf '%s' "$(params.digest)" > "$(results.IMAGE_DIGEST.path)"
               printf '%s' "$(params.image_reference)" > "$(results.IMAGE_REFERENCE.path)"
+              printf '%s' "$(params.internal_reference)" > "$(results.INTERNAL_IMAGE_REFERENCE.path)"
+              printf '%s' "$(params.image_reference)" > "$(results.PROMOTION_IMAGE_REFERENCE.path)"
               printf '%s' "$(params.git_commit)" > "$(results.GIT_COMMIT.path)"
               printf '%s' "$(params.score)" > "$(results.QUALITY_SCORE.path)"
               printf '%s' "$(params.status)" > "$(results.QUALITY_RESULT.path)"
@@ -469,9 +579,8 @@ spec:
               Scenarios:       $(params.scenarios)
               Score:           $(params.score)
               Threshold:       0.90
-              IMAGE_URL:       $(params.image_url)
-              IMAGE_DIGEST:    $(params.digest)
-              IMAGE_REFERENCE: $(params.image_reference)
+              INTERNAL_IMAGE_REFERENCE: $(params.internal_reference)
+              PROMOTION_IMAGE_REFERENCE: $(params.image_reference)
               GIT_COMMIT:      $(params.git_commit)
               PIPELINERUN:     ${PR_NAME}
               Promote (PROD):  scripts/promote-backend-image.sh --pipelinerun ${PR_NAME} --namespace packmate-lab --create-pr

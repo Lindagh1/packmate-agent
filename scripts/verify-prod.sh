@@ -83,6 +83,51 @@ else
   pass "No :latest on PROD Deployments"
 fi
 
+BACKEND_IMG="$(oc -n "${NS}" get deploy packmate-backend -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+[[ -n "${BACKEND_IMG}" ]] && pass "PROD backend image reference extracted" || fail "PROD backend image reference extracted"
+printf '%s\n' "${BACKEND_IMG}"
+if [[ "${BACKEND_IMG}" == *@sha256:* ]]; then
+  pass "PROD backend uses immutable digest"
+else
+  fail "PROD backend uses immutable digest"
+fi
+if [[ "${BACKEND_IMG}" == image-registry.openshift-image-registry.svc:* ]]; then
+  if [[ "${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE:-true}" == "true" ]]; then
+    fail "PROD backend uses durable registry"
+    fail "No old sandbox internal registry digest"
+  else
+    printf 'WARN  PROD image is sandbox-local and cannot be reused on a new cluster.\n'
+  fi
+else
+  pass "PROD backend uses durable registry"
+  pass "No old sandbox internal registry digest"
+fi
+
+# Pull events
+if oc -n "${NS}" get events --field-selector reason=Failed --sort-by=.lastTimestamp 2>/dev/null | tail -30 | grep -qiE 'ErrImagePull|ImagePullBackOff|manifest unknown'; then
+  fail "No ErrImagePull / ImagePullBackOff / manifest unknown"
+else
+  pass "No ImagePullBackOff"
+  pass "No ErrImagePull"
+  pass "No manifest unknown event"
+fi
+
+# Match Git overlay backend digest when portable
+GIT_BACKEND="$(python3 - "${ROOT}" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1], "deploy/overlays/prod/kustomization.yaml").read_text()
+m = re.search(r"name: quay.io/example/packmate-backend.*?newName:\s*(\S+).*?digest:\s*(sha256:[0-9a-f]+)", text, re.S)
+print(f"{m.group(1)}@{m.group(2)}" if m else "")
+PY
+)"
+if [[ -n "${GIT_BACKEND}" && "${BACKEND_IMG}" == "${GIT_BACKEND}" ]]; then
+  pass "PROD Deployment image matches Git"
+else
+  info "Git wants ${GIT_BACKEND:-?} live=${BACKEND_IMG} (Sync may be pending)"
+  [[ "${BACKEND_IMG}" == "${GIT_BACKEND}" ]] && pass "PROD Deployment image matches Git" || fail "PROD Deployment image matches Git"
+fi
+
 printf '\n'
 if [[ "${FAILS}" -gt 0 ]]; then
   printf 'verify-prod: %s check(s) failed\n' "${FAILS}"

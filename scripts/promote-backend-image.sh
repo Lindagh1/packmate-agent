@@ -92,7 +92,7 @@ if [[ -z "${LEGACY_DIGEST}" && -z "${PIPELINERUN}" ]]; then
   die "Provide --pipelinerun <name> or a legacy sha256 digest as \$1"
 fi
 
-IMAGE_NAME="${IMAGE_NAME:-image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/packmate-backend}"
+IMAGE_NAME="${IMAGE_NAME:-${PACKMATE_PROMOTION_REGISTRY:-ghcr.io}/${PACKMATE_PROMOTION_REGISTRY_OWNER:-Lindagh1}/${PACKMATE_PROMOTION_IMAGE_NAME:-packmate-backend}}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -220,19 +220,38 @@ def task_results(pipeline_task_name):
 
 gate_results, gate_err = task_results("ai-quality-gate")
 build_results, build_err = task_results("build-backend")
+pub_results, pub_err = task_results("publish-candidate")
 
 score = pipeline_results.get("score", gate_results.get("score", ""))
 status_val = pipeline_results.get("status", gate_results.get("status", ""))
 digest = pipeline_results.get("digest", build_results.get("digest", ""))
+promo_ref = (
+    pipeline_results.get("PROMOTION_IMAGE_REFERENCE")
+    or pub_results.get("PROMOTION_IMAGE_REFERENCE")
+    or ""
+)
+promo_digest = pub_results.get("PROMOTION_IMAGE_DIGEST", "")
+promo_verified = pub_results.get("PROMOTION_REGISTRY_VERIFIED", "")
+internal_ref = (
+    pub_results.get("INTERNAL_IMAGE_REFERENCE")
+    or build_results.get("IMAGE_REFERENCE")
+    or ""
+)
 
 emit("QUALITY_SCORE", score)
 emit("QUALITY_STATUS", status_val)
 emit("BUILD_DIGEST", digest)
+emit("PROMOTION_IMAGE_REFERENCE", promo_ref)
+emit("PROMOTION_IMAGE_DIGEST", promo_digest)
+emit("PROMOTION_REGISTRY_VERIFIED", promo_verified)
+emit("INTERNAL_IMAGE_REFERENCE", internal_ref)
 
 if gate_err:
     print(f"WARN: ai-quality-gate TaskRun lookup: {gate_err}", file=sys.stderr)
 if build_err:
     print(f"WARN: build-backend TaskRun lookup: {build_err}", file=sys.stderr)
+if pub_err:
+    print(f"WARN: publish-candidate TaskRun lookup: {pub_err}", file=sys.stderr)
 PY
 }
 
@@ -312,7 +331,24 @@ EOF
 QUALITY_SCORE=""
 QUALITY_STATUS=""
 BUILD_DIGEST=""
+PROMOTION_IMAGE_REFERENCE="${PROMOTION_IMAGE_REFERENCE:-}"
+PROMOTION_IMAGE_DIGEST="${PROMOTION_IMAGE_DIGEST:-}"
+PROMOTION_REGISTRY_VERIFIED="${PROMOTION_REGISTRY_VERIFIED:-}"
+INTERNAL_IMAGE_REFERENCE="${INTERNAL_IMAGE_REFERENCE:-}"
 PROMO_KIND=""
+PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE="${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE:-true}"
+PACKMATE_PROMOTION_REGISTRY="${PACKMATE_PROMOTION_REGISTRY:-ghcr.io}"
+PACKMATE_PROMOTION_REGISTRY_OWNER="${PACKMATE_PROMOTION_REGISTRY_OWNER:-Lindagh1}"
+PACKMATE_PROMOTION_IMAGE_NAME="${PACKMATE_PROMOTION_IMAGE_NAME:-packmate-backend}"
+
+is_non_portable_ref() {
+  local r="$1"
+  [[ "${r}" == image-registry.openshift-image-registry.svc:* ]] \
+    || [[ "${r}" == *default-route-openshift-image-registry* ]] \
+    || [[ "${r}" == 172.30.* ]] \
+    || [[ "${r}" == *.svc:* ]] \
+    || [[ "${r}" == *.svc.cluster.local:* ]]
+}
 
 if [[ -n "${PIPELINERUN}" ]]; then
   PROMO_KIND="pipelinerun"
@@ -329,7 +365,6 @@ if [[ -n "${PIPELINERUN}" ]]; then
 
   [[ -n "${QUALITY_STATUS}" ]] || die "could not read ai-quality-gate 'status' result"
   [[ -n "${QUALITY_SCORE}" ]] || die "could not read ai-quality-gate 'score' result"
-  [[ -n "${BUILD_DIGEST}" ]] || die "could not read build-backend 'digest' result"
 
   [[ "${QUALITY_STATUS}" == "PASS" ]] \
     || die "AI quality gate status=${QUALITY_STATUS} (must be PASS)"
@@ -339,25 +374,55 @@ if [[ -n "${PIPELINERUN}" ]]; then
   fi
   log "OK: quality gate status=${QUALITY_STATUS} score=${QUALITY_SCORE} (threshold ${THRESHOLD})"
 
-  DIGEST="$(normalize_digest "${BUILD_DIGEST}")"
+  # Prefer durable external promotion reference from publish-candidate.
+  if [[ -n "${PROMOTION_IMAGE_REFERENCE}" ]]; then
+    IMAGE_REFERENCE="${PROMOTION_IMAGE_REFERENCE}"
+  elif [[ -n "${BUILD_DIGEST}" ]]; then
+    IMAGE_REFERENCE="${IMAGE_NAME}@$(normalize_digest "${BUILD_DIGEST}")"
+  else
+    die "could not read PROMOTION_IMAGE_REFERENCE or build-backend digest"
+  fi
+
+  if [[ "${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE}" == "true" ]]; then
+    if is_non_portable_ref "${IMAGE_REFERENCE}"; then
+      printf 'BLOCKED_NON_PORTABLE_PROD_IMAGE_REFERENCE\n' >&2
+      die "Promotion reference is cluster-local (${IMAGE_REFERENCE}). Use publish-candidate external digest."
+    fi
+    [[ "${PROMOTION_REGISTRY_VERIFIED}" == "true" || "${IMAGE_REFERENCE}" == ghcr.io/*@sha256:* ]] \
+      || die "PROMOTION_REGISTRY_VERIFIED is not true"
+  fi
 else
   PROMO_KIND="legacy"
   DIGEST="$(normalize_digest "${LEGACY_DIGEST}")"
+  IMAGE_NAME="${IMAGE_NAME:-${PACKMATE_PROMOTION_REGISTRY}/${PACKMATE_PROMOTION_REGISTRY_OWNER}/${PACKMATE_PROMOTION_IMAGE_NAME}}"
+  IMAGE_REFERENCE="${IMAGE_NAME}@${DIGEST}"
 
   log "=== Packmate backend promotion (legacy digest mode) ==="
   log "namespace=${NAMESPACE}"
   warn "legacy mode skips PipelineRun / AI quality gate verification — promoting on operator confirmation only"
+  if [[ "${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE}" == "true" ]] && is_non_portable_ref "${IMAGE_REFERENCE}"; then
+    printf 'BLOCKED_NON_PORTABLE_PROD_IMAGE_REFERENCE\n' >&2
+    die "Legacy promotion rejected non-portable internal registry reference"
+  fi
 fi
 
+[[ "${IMAGE_REFERENCE}" == *@sha256:* ]] || die "image reference must be digest-pinned: ${IMAGE_REFERENCE}"
+[[ "${IMAGE_REFERENCE}" != *:latest* ]] || die "Refuse :latest in promotion reference"
+
+IMAGE_NAME="${IMAGE_REFERENCE%@*}"
+DIGEST="$(normalize_digest "${IMAGE_REFERENCE##*@}")"
 [[ "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] || die "invalid digest format: ${DIGEST}"
 
-IMAGE_REFERENCE="${IMAGE_NAME}@${DIGEST}"
 SHORT="$(short_digest "${DIGEST}")"
 BRANCH="promote/backend-${SHORT}"
 
 log "image_reference=${IMAGE_REFERENCE}"
+log "internal_build_reference=${INTERNAL_IMAGE_REFERENCE:-n/a}"
 
-verify_image_exists "${NAMESPACE}" "${DIGEST}"
+# External digests are not expected in the lab ImageStream.
+if is_non_portable_ref "${IMAGE_REFERENCE}"; then
+  verify_image_exists "${NAMESPACE}" "${DIGEST}"
+fi
 
 if [[ "${PROMO_KIND}" == "legacy" ]]; then
   echo
@@ -429,8 +494,12 @@ cat > "${PR_BODY_FILE}" <<EOF
 | AI quality status | ${QUALITY_STATUS:-N/A} |
 | AI quality score | ${QUALITY_SCORE:-N/A} (threshold ${THRESHOLD}) |
 | Image reference | \`${IMAGE_REFERENCE}\` |
+| Internal build reference | \`${INTERNAL_IMAGE_REFERENCE:-n/a}\` |
+| Promotion registry verified | ${PROMOTION_REGISTRY_VERIFIED:-n/a} |
+| Target environment | packmate-prod |
 
 This PR updates **only** \`deploy/overlays/prod/kustomization.yaml\` (backend \`newName\`/\`digest\`).
+No OpenShift internal-registry references are permitted in the shared PROD overlay.
 No changes to the dev overlay, frontend image, MCP images, or application code.
 
 ### Rollback procedure
