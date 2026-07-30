@@ -20,6 +20,9 @@
 | Check | `make verify-python-deps` (in-cluster source of truth) |
 | Workbench | `scripts/setup-workbench-repository.sh` clones into `/opt/app-root/src/packmate-agent` |
 | Bootstrap | resolve → in-cluster deps → render → validate → apply rendered Pipeline |
+| Git identity | `scripts/configure-git-identity.sh` / `make configure-git` (repo-local; no tokens; `gh` optional) |
+| Validated PipelineRun | `packmate-ci-6hxnr` (sandbox2571) — all tasks Succeeded; quality **0.9559**; candidate `sha256:93465ee6…`; model uid/gen unchanged |
+| Idempotent bootstrap | Second `make bootstrap` kept PipelineRun count stable; did not recreate model or apply PROD workloads |
 
 Do not commit rendered digests. Participants never hand-edit Tekton YAML or requirements.
 
