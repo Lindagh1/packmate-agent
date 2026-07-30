@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 backend/.venv/
+mcp-servers/*/.venv/
 .env
 frontend/node_modules/
 frontend/dist/
@@ -16,3 +17,5 @@ evaluations/reports/*
 deploy/rendered/*
 !deploy/rendered/.gitkeep
 config/sandbox.env
+.tekton/lab/generated/packmate-ci.rendered.yaml
+.tekton/lab/packmate-ci.rendered.yaml

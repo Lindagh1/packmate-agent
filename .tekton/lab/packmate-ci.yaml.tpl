@@ -1,4 +1,7 @@
-# Lab-facing Tekton Pipeline: packmate-ci
+# Lab-facing Tekton Pipeline TEMPLATE: packmate-ci
+# DO NOT apply this file directly. Bootstrap renders it with the current sandbox
+# Python digest via scripts/render-packmate-pipeline.sh.
+# Placeholder: __PACKMATE_PIPELINE_PYTHON_IMAGE__
 # Participant: OpenShift Console → Pipelines → packmate-ci → Start
 # IMPORTANT: workspace "source" MUST use a VolumeClaimTemplate (shared PVC).
 #            Empty Directory does NOT persist between tasks — clone output is lost.
@@ -95,7 +98,7 @@ spec:
           - name: source
         steps:
           - name: clone
-            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
             workingDir: $(workspaces.source.path)
             env:
               - name: URL
@@ -146,7 +149,7 @@ spec:
           - name: source
         steps:
           - name: backend-pytest
-            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
             workingDir: $(workspaces.source.path)/backend
             script: |
               #!/usr/bin/env bash
@@ -169,6 +172,11 @@ spec:
               python -m venv /tmp/venv
               # shellcheck disable=SC1091
               source /tmp/venv/bin/activate
+              # RHOAI 3.4 mirror only — never fall back to public PyPI.
+              export PIP_INDEX_URL="${RHOAI_PYPI_INDEX_URL:-https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple}"
+              export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-console.redhat.com}"
+              unset PIP_EXTRA_INDEX_URL || true
+              python -m pip install -q -U pip
               python -m pip install -q -r requirements-dev.txt
               python -m pytest -q --maxfail=1
               echo "BACKEND_TESTS_OK"
@@ -192,7 +200,7 @@ spec:
           - name: scenarios
         steps:
           - name: gate
-            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
             workingDir: $(workspaces.source.path)/backend
             env:
               - name: THRESHOLD
@@ -218,6 +226,11 @@ spec:
               python -m venv /tmp/venv
               # shellcheck disable=SC1091
               source /tmp/venv/bin/activate
+              # RHOAI 3.4 mirror only — never fall back to public PyPI.
+              export PIP_INDEX_URL="${RHOAI_PYPI_INDEX_URL:-https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple}"
+              export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-console.redhat.com}"
+              unset PIP_EXTRA_INDEX_URL || true
+              python -m pip install -q -U pip
               python -m pip install -q -r requirements-dev.txt
               set +e
               OUT="$(python -m evals.runner --mode deterministic --threshold "${THRESHOLD}" 2>&1)"
@@ -248,7 +261,7 @@ spec:
           - name: source
         steps:
           - name: check
-            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
             workingDir: $(workspaces.source.path)
             script: |
               #!/usr/bin/env bash
@@ -401,7 +414,7 @@ spec:
           - name: PIPELINERUN_NAME
         steps:
           - name: summary
-            image: image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb
+            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
             env:
               - name: POD_NAME
                 valueFrom:

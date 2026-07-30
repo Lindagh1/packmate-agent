@@ -327,8 +327,36 @@ wait_http_200 "https://${ROUTE_HOST}/" "frontend /"
 # 11) Pipeline (DEV only) + prepare PROD (namespace/secret/RBAC/Argo — no PROD oc apply)
 if [[ "${CREATE_PIPELINE}" == "true" ]]; then
   if packmate_api_has '^pipelines[[:space:]].*tekton\.dev'; then
-    log "==> Applying lab Pipeline packmate-ci"
-    oc apply -n "${PACKMATE_NAMESPACE}" -f "${ROOT}/.tekton/lab/packmate-ci.yaml" >/dev/null
+    log "==> Resolving Pipeline Python image (openshift/python:3.12-ubi9)"
+    PACKMATE_NAMESPACE="${PACKMATE_NAMESPACE}" \
+      bash "${ROOT}/scripts/resolve-pipeline-python-image.sh" >/tmp/packmate-python-image.txt
+    RESOLVED_PY_IMAGE="$(tr -d '[:space:]' </tmp/packmate-python-image.txt)"
+    [[ -n "${RESOLVED_PY_IMAGE}" ]] || die "Failed to resolve Pipeline Python image"
+    log "    Python image: ${RESOLVED_PY_IMAGE}"
+
+    log "==> Verifying RHOAI Python package compatibility"
+    PACKMATE_NAMESPACE="${PACKMATE_NAMESPACE}" \
+      bash "${ROOT}/scripts/check-rhoai-python-dependencies.sh"
+
+    log "==> Rendering lab Pipeline packmate-ci from template"
+    PACKMATE_PIPELINE_PYTHON_IMAGE="${RESOLVED_PY_IMAGE}" \
+    PACKMATE_NAMESPACE="${PACKMATE_NAMESPACE}" \
+    PACKMATE_SKIP_PYTHON_IMAGE_PULL_PROBE=true \
+      RENDERED="$(bash "${ROOT}/scripts/render-packmate-pipeline.sh" | tail -n 1)"
+    [[ -f "${RENDERED}" ]] || die "Rendered Pipeline missing: ${RENDERED}"
+    grep -q "${RESOLVED_PY_IMAGE}" "${RENDERED}" || die "Rendered Pipeline missing resolved digest"
+    grep -q 'ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb' "${RENDERED}" \
+      && die "Obsolete Python digest still present in rendered Pipeline"
+    grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${RENDERED}" \
+      && die "Unresolved placeholder in rendered Pipeline"
+
+    log "==> Applying rendered Pipeline packmate-ci"
+    oc apply -n "${PACKMATE_NAMESPACE}" -f "${RENDERED}" >/dev/null
+    DEPLOYED_IMG="$(oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci -o yaml \
+      | grep -E 'image: .*openshift/python@' | head -1 | awk '{print $2}' || true)"
+    [[ "${DEPLOYED_IMG}" == "${RESOLVED_PY_IMAGE}" ]] \
+      || die "Deployed Pipeline Python image mismatch (deployed=${DEPLOYED_IMG} expected=${RESOLVED_PY_IMAGE})"
+    log "    Deployed Pipeline uses ${DEPLOYED_IMG}"
     if ! oc -n "${PACKMATE_NAMESPACE}" get bc packmate-backend >/dev/null 2>&1; then
       oc -n "${PACKMATE_NAMESPACE}" apply -f - <<EOF
 apiVersion: image.openshift.io/v1
