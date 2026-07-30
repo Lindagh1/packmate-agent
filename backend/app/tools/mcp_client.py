@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 from app.observability import span
 
@@ -99,7 +99,7 @@ async def call_mcp_tool(
 
 
 async def _call_once(url: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    async with streamablehttp_client(url) as (read_stream, write_stream, _get_session_id):
+    async with streamable_http_client(url) as (read_stream, write_stream, _get_session_id):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             result = await session.call_tool(tool_name, arguments)
