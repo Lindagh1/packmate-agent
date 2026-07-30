@@ -6,7 +6,9 @@ SHELL := /bin/bash
 .PHONY: help preflight bootstrap verify verify-dev verify-prod verify-gitops \
 	prepare-prod configure-argocd-rbac cleanup test render promote validate-prod \
 	verify-python-deps resolve-pipeline-python-image render-pipeline validate-pipeline \
-	configure-git setup-workbench-repository security-check
+	configure-git setup-workbench-repository security-check \
+	check-gitops-prerequisites install-gitops-operator wait-for-gitops instructor-setup \
+	configure-promotion-registry verify-promotion-registry
 
 help:
 	@echo "Packmate lab targets:"
@@ -14,11 +16,17 @@ help:
 	@echo "  make configure-git          Repository-local Git user.name / user.email"
 	@echo "  make preflight              Cluster, repo, mirror, and image checks"
 	@echo "  make bootstrap              DEV workloads + render/apply Pipeline + PROD prep"
+	@echo "  make instructor-setup       Instructor: GitOps + SSO/RBAC + both Applications"
+	@echo "  make check-gitops-prerequisites  Verify Red Hat OpenShift GitOps readiness"
+	@echo "  make install-gitops-operator     Instructor-only Operator install"
+	@echo "  make wait-for-gitops        Wait until GitOps check passes"
+	@echo "  make configure-promotion-registry  Instructor: GHCR push/pull Secrets"
+	@echo "  make verify-promotion-registry     Verify promotion registry config"
 	@echo "  make prepare-prod           Create packmate-prod + Secret + Argo (no workload apply)"
-	@echo "  make configure-argocd-rbac  SSO group + AppProject promoter role"
+	@echo "  make configure-argocd-rbac  SSO group + AppProject participant role"
 	@echo "  make verify / verify-dev    DEV readiness (compat)"
 	@echo "  make verify-prod            PROD readiness after Argo Sync"
-	@echo "  make verify-gitops          AppProject/Application/RBAC checks"
+	@echo "  make verify-gitops          AppProject/Applications/RBAC checks"
 	@echo "  make validate-prod          Static PROD overlay checks"
 	@echo "  make verify-python-deps     RHOAI mirror dependency compatibility (in-cluster)"
 	@echo "  make resolve-pipeline-python-image  Resolve openshift/python:3.12-ubi9 digest"
@@ -91,7 +99,8 @@ test:
 	  bash "$(ROOT)/evaluations/scripts/run_deterministic_gate.sh"; \
 	  bash "$(ROOT)/scripts/security-check.sh"; \
 	  bash "$(ROOT)/scripts/tests/test-pipeline-portability.sh"; \
-	  bash "$(ROOT)/scripts/tests/test-workbench-repository-setup.sh"
+	  bash "$(ROOT)/scripts/tests/test-workbench-repository-setup.sh"; \
+	bash "$(ROOT)/scripts/tests/test-gitops-portable-prod.sh"
 
 render:
 	@bash "$(ROOT)/scripts/render-manifests.sh"
@@ -101,3 +110,21 @@ promote:
 
 security-check:
 	@bash "$(ROOT)/scripts/security-check.sh"
+
+check-gitops-prerequisites:
+	@bash "$(ROOT)/scripts/check-openshift-gitops.sh"
+
+install-gitops-operator:
+	@INSTALL_OPENSHIFT_GITOPS_OPERATOR=true bash "$(ROOT)/scripts/install-openshift-gitops-operator.sh"
+
+wait-for-gitops:
+	@bash -c 'for i in $$(seq 1 90); do bash "$(ROOT)/scripts/check-openshift-gitops.sh" && exit 0; sleep 10; done; echo "Timed out waiting for GitOps"; exit 1'
+
+instructor-setup:
+	@bash "$(ROOT)/scripts/instructor-setup.sh"
+
+configure-promotion-registry:
+	@bash "$(ROOT)/scripts/configure-promotion-registry.sh"
+
+verify-promotion-registry:
+	@bash "$(ROOT)/scripts/verify-promotion-registry.sh"
