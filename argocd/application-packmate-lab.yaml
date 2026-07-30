@@ -1,6 +1,7 @@
-# Argo CD Application for Packmate Lab — MANUAL sync for first-touch demo.
-# prune=false, selfHeal=false. No automatic destructive sync.
-# Placeholders: __GIT_REPO_URL__ __GIT_REVISION__ __PACKMATE_NAMESPACE__
+# Argo CD Application packmate-lab (DEV) — AppProject packmate.
+# Automated reconciliation allowed; prune=false; selfHeal=false.
+# Does NOT manage Workbenches, Notebooks, Pipelines, AI endpoint Secrets, or models.
+# Placeholders: __GIT_REPO_URL__ __GIT_REVISION__
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -10,22 +11,23 @@ metadata:
   labels:
     app.kubernetes.io/part-of: packmate
     app.kubernetes.io/component: lab
+    packmate.io/environment: lab
 spec:
-  project: packmate-lab
+  project: packmate
   source:
     repoURL: __GIT_REPO_URL__
     targetRevision: __GIT_REVISION__
     path: deploy/overlays/dev
-    kustomize:
-      # Force destination namespace so overlay's packmate-lab default does not leak.
-      namespace: __PACKMATE_NAMESPACE__
   destination:
     server: https://kubernetes.default.svc
-    namespace: __PACKMATE_NAMESPACE__
+    namespace: packmate-lab
   syncPolicy:
-    # Manual Sync only — participant clicks Sync in the UI.
+    automated:
+      prune: false
+      selfHeal: false
     syncOptions:
       - CreateNamespace=false
       - ApplyOutOfSyncOnly=true
-  # Explicitly omit automated.prune / automated.selfHeal for first-touch safety.
-  revisionHistoryLimit: 3
+      - RespectIgnoreDifferences=true
+  # Explicitly omit automated.prune=true / selfHeal=true for workshop safety.
+  revisionHistoryLimit: 5

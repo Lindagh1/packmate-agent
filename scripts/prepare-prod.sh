@@ -111,54 +111,58 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5) Argo CD AppProject + Application (manifests only — never workloads)
+# 5) Argo CD AppProject + Applications (packmate-lab + packmate-prod)
 # ---------------------------------------------------------------------------
+PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE="${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE:-true}"
+if [[ "${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE}" == "true" ]]; then
+  if grep -qE 'image-registry\.openshift-image-registry\.svc|default-route-openshift-image-registry' \
+    "${ROOT}/deploy/overlays/prod/kustomization.yaml"; then
+    die "BLOCKED_OLD_SANDBOX_PROD_IMAGE_REFERENCE: The PROD overlay references an image from another sandbox. Promote a durable external image or restore the validated external baseline."
+  fi
+  log "OK: PROD overlay uses durable (non-internal) image references"
+fi
+
+REQUIRE_OPENSHIFT_GITOPS="${REQUIRE_OPENSHIFT_GITOPS:-true}"
 if oc get crd applications.argoproj.io >/dev/null 2>&1; then
-  log "==> Applying Argo CD AppProject + Application (manual sync, packmate-prod only)"
-  sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
-      -e "s|__PACKMATE_ARGO_GROUP__|${PACKMATE_ARGO_GROUP}|g" \
-      "${ROOT}/argocd/appproject-packmate.yaml" | oc apply -f - >/dev/null
-  sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
-      -e "s|__GIT_REVISION__|${GIT_REVISION}|g" \
-      "${ROOT}/argocd/application-packmate-prod.yaml" | oc apply -f - >/dev/null
-  log "OK: AppProject/packmate and Application/packmate-prod applied (destination namespace ${PACKMATE_PROD_NAMESPACE}, manual Sync)"
+  if ! bash "${ROOT}/scripts/check-openshift-gitops.sh" >/tmp/packmate-prepare-gitops.txt 2>&1; then
+    cat /tmp/packmate-prepare-gitops.txt >&2 || true
+    if [[ "${REQUIRE_OPENSHIFT_GITOPS}" == "true" ]]; then
+      die "GitOps not ready — instructor must run INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup"
+    fi
+    warn "GitOps not fully ready — skipping Application apply"
+  else
+    log "==> Applying Argo CD AppProject + Applications (DEV + PROD)"
+    bash "${ROOT}/scripts/apply-packmate-argocd.sh"
+    log "OK: AppProject/packmate and Applications packmate-lab + packmate-prod applied"
+  fi
 else
+  if [[ "${REQUIRE_OPENSHIFT_GITOPS}" == "true" ]]; then
+    die "BLOCKED_GITOPS_OPERATOR_NOT_INSTALLED — see docs/INSTALL_GITOPS_PREREQUISITE.md"
+  fi
   warn "ArgoCD CRDs not found — GitOps operator not installed. See docs/INSTALL_GITOPS_PREREQUISITE.md"
 fi
 
 # ---------------------------------------------------------------------------
-# 6) Namespace GitOps management mechanism.
-#    Preferred / official OpenShift GitOps 1.x mechanism: label the target
-#    namespace so the cluster-scoped Argo CD instance's operator-managed
-#    RBAC recognizes it as a "managed namespace" for the application
-#    controller/server ServiceAccounts. This is minimal and does not create
-#    any RoleBinding by hand.
+# 6) Namespace GitOps management mechanism (also applied in apply-packmate-argocd).
 # ---------------------------------------------------------------------------
 oc label namespace "${PACKMATE_PROD_NAMESPACE}" argocd.argoproj.io/managed-by="${ARGOCD_NAMESPACE}" --overwrite >/dev/null
-log "OK: labeled namespace/${PACKMATE_PROD_NAMESPACE} argocd.argoproj.io/managed-by=${ARGOCD_NAMESPACE}"
-log "    (official OpenShift GitOps 1.x managed-namespace mechanism — operator generates the"
-log "     application-controller/server RBAC automatically; no manual RoleBinding created)"
+oc label namespace "${PACKMATE_LAB_NAMESPACE}" argocd.argoproj.io/managed-by="${ARGOCD_NAMESPACE}" --overwrite >/dev/null
+log "OK: labeled namespaces managed-by=${ARGOCD_NAMESPACE}"
 
 CONTROLLER_SUBJECT="system:serviceaccount:${ARGOCD_NAMESPACE}:${ARGOCD_NAMESPACE}-argocd-application-controller"
 if oc -n "${PACKMATE_PROD_NAMESPACE}" auth can-i get deployments --as="${CONTROLLER_SUBJECT}" >/dev/null 2>&1; then
-  log "OK: verified ${CONTROLLER_SUBJECT} has access in ${PACKMATE_PROD_NAMESPACE} — managed-by label was sufficient"
+  log "OK: verified ${CONTROLLER_SUBJECT} has access in ${PACKMATE_PROD_NAMESPACE}"
 else
   warn "managed-by label access not yet visible for ${CONTROLLER_SUBJECT} in ${PACKMATE_PROD_NAMESPACE}"
-  warn "(the operator may take a moment to reconcile RBAC after labeling; re-run 'oc auth can-i' to confirm before falling back)"
   if [[ "${ARGOCD_RBAC_FALLBACK}" == "true" ]]; then
-    log "ARGOCD_RBAC_FALLBACK=true — applying minimal fallback RoleBinding (edit role) as documented"
     oc adm policy add-role-to-user edit "${CONTROLLER_SUBJECT}" -n "${PACKMATE_PROD_NAMESPACE}" >/dev/null
-    log "OK: fallback used — bound 'edit' role for ${CONTROLLER_SUBJECT} in ${PACKMATE_PROD_NAMESPACE}"
-    log "    DOCUMENTED FALLBACK: managed-by namespace label was insufficient at run time; a direct"
-    log "    RoleBinding (edit) was created for the argocd-application-controller ServiceAccount."
-  else
-    log "    Not applying the manual RoleBinding fallback (ARGOCD_RBAC_FALLBACK=false, minimal by default)."
-    log "    If Sync later fails with RBAC errors, re-run with ARGOCD_RBAC_FALLBACK=true."
+    oc adm policy add-role-to-user edit "${CONTROLLER_SUBJECT}" -n "${PACKMATE_LAB_NAMESPACE}" >/dev/null
+    log "OK: fallback edit RoleBinding applied"
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# 7) Optional: participant Argo CD RBAC (Sync-only on packmate-prod)
+# 7) Optional: participant Argo CD RBAC
 # ---------------------------------------------------------------------------
 if [[ "${CREATE_ARGOCD_RBAC}" == "true" ]]; then
   if oc get crd argocds.argoproj.io >/dev/null 2>&1; then
@@ -178,10 +182,12 @@ Namespace:        ${PACKMATE_PROD_NAMESPACE} (packmate.io/environment=prod)
 Secret:            packmate-prod-llm (values not shown)
 Image pull RBAC:   system:image-puller in ${PACKMATE_LAB_NAMESPACE} for packmate-prod SAs
 GitOps namespace:  managed-by label = ${ARGOCD_NAMESPACE}
-Argo CD:           AppProject/packmate, Application/packmate-prod (manual Sync)
+Argo CD:           AppProject/packmate, Applications packmate-lab + packmate-prod
 
-This script did NOT deploy workloads (no 'oc apply -k deploy/overlays/prod').
-Sync Application/packmate-prod manually (Argo CD UI, or via the 'promoter'
-role after scripts/configure-argocd-lab-rbac.sh) once digests are promoted:
-  ./scripts/promote-backend-image.sh --pipelinerun <name> --namespace ${PACKMATE_LAB_NAMESPACE} --create-pr
+Argo CD dashboard expected applications:
+- packmate-lab
+- packmate-prod
+
+This script did NOT deploy PROD workloads via oc apply.
+Sync Application/packmate-prod manually after promotion PRs.
 EOF

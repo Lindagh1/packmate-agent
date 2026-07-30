@@ -1,5 +1,5 @@
-# Argo CD AppProject for Packmate PRODUCTION only.
-# Placeholders replaced by bootstrap: __GIT_REPO_URL__
+# Argo CD AppProject for Packmate DEV + PROD.
+# Placeholders replaced by bootstrap/instructor-setup: __GIT_REPO_URL__ __PACKMATE_ARGO_GROUP__
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
@@ -9,10 +9,12 @@ metadata:
   labels:
     app.kubernetes.io/part-of: packmate
 spec:
-  description: Packmate production GitOps — destination packmate-prod only (no wildcards)
+  description: Packmate lab GitOps — destinations packmate-lab and packmate-prod only (no wildcards)
   sourceRepos:
     - __GIT_REPO_URL__
   destinations:
+    - namespace: packmate-lab
+      server: https://kubernetes.default.svc
     - namespace: packmate-prod
       server: https://kubernetes.default.svc
   clusterResourceWhitelist: []
@@ -23,25 +25,35 @@ spec:
       kind: Service
     - group: ""
       kind: ServiceAccount
+    - group: ""
+      kind: LimitRange
     - group: apps
       kind: Deployment
     - group: networking.k8s.io
       kind: NetworkPolicy
     - group: route.openshift.io
       kind: Route
-    # Secret kind is whitelisted so Sync does not fail if a future Git-managed
-    # Secret appears; instructor-created packmate-prod-llm is NOT in Git and
-    # must not be pruned (prune disabled on Application).
+    # Secret kind whitelisted so Sync does not fail if a future Git-managed
+    # Secret appears; instructor-created Secrets (packmate-prod-llm, GHCR pull)
+    # are NOT in Git and must not be pruned (prune disabled on Applications).
     - group: ""
       kind: Secret
   orphanedResources:
     warn: true
   roles:
-    # Participant role — Sync only on Application packmate-prod.
-    - name: promoter
-      description: Packmate lab participants may view and Sync packmate-prod only
+    # Participants may SEE both Applications and Sync PROD only.
+    - name: participant
+      description: Packmate lab participants may get both apps and sync packmate-prod
       groups:
         - __PACKMATE_ARGO_GROUP__
       policies:
-        - p, proj:packmate:promoter, applications, get, packmate/packmate-prod, allow
+        - p, proj:packmate:participant, applications, get, packmate/*, allow
+        - p, proj:packmate:participant, applications, sync, packmate/packmate-prod, allow
+    # Backward-compatible alias used by older docs/scripts.
+    - name: promoter
+      description: Alias of participant (Sync packmate-prod; get both apps)
+      groups:
+        - __PACKMATE_ARGO_GROUP__
+      policies:
+        - p, proj:packmate:promoter, applications, get, packmate/*, allow
         - p, proj:packmate:promoter, applications, sync, packmate/packmate-prod, allow

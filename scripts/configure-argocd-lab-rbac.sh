@@ -168,7 +168,7 @@ if [[ -f "${APPPROJECT_FILE}" ]]; then
   sed -e "s|__GIT_REPO_URL__|${GIT_REPO_URL}|g" \
       -e "s|__PACKMATE_ARGO_GROUP__|${PACKMATE_ARGO_GROUP}|g" \
       "${APPPROJECT_FILE}" | oc apply -f - >/dev/null
-  log "OK: re-applied argocd/appproject-packmate.yaml (promoter role -> group ${PACKMATE_ARGO_GROUP})"
+  log "OK: re-applied argocd/appproject-packmate.yaml (participant/promoter roles -> group ${PACKMATE_ARGO_GROUP})"
 else
   warn "argocd/appproject-packmate.yaml not found — skipping AppProject re-apply"
 fi
@@ -181,12 +181,10 @@ cat <<EOF
 === Reconnect required ===
 Argo CD reads OpenShift group membership from the OAuth token issued at
 login time. Participants added to '${PACKMATE_ARGO_GROUP}' must LOG OUT and
-LOG BACK IN to the Argo CD UI (re-authenticate via OpenShift OAuth/SSO) for
-the new group membership — and therefore the 'promoter' role on
-Application/packmate-prod — to take effect. Restarting the argocd-server
-pod (or waiting for dex/argocd-server config reload) may also be required
-after an RBAC scopes change:
-  oc rollout restart deployment/${ARGOCD_NAME}-server -n ${ARGOCD_NAMESPACE}
+LOG BACK IN to the Argo CD UI (Log in via OpenShift) for the new group
+membership — and therefore get on packmate-lab + packmate-prod and Sync on
+packmate-prod — to take effect. Open User Info and confirm group claims.
+Never use the local Argo CD admin password.
 
 Backup of the ArgoCD CR before this run: ${BACKUP_FILE}
 EOF

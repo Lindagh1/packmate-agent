@@ -97,6 +97,20 @@ log "  weather=${WEATHER_MCP_IMAGE:-<overlay default>}"
 log "  baggage=${BAGGAGE_POLICY_MCP_IMAGE:-<overlay default>}"
 log "flags: REGISTER_MCP=${REGISTER_MCP} ENABLE_CUSTOM_ENDPOINTS=${ENABLE_CUSTOM_ENDPOINTS:-true} CREATE_MODEL_ENDPOINT=${CREATE_MODEL_CUSTOM_ENDPOINT} CREATE_PIPELINE=${CREATE_PIPELINE} CREATE_ARGOCD=${CREATE_ARGOCD_APPLICATION}"
 
+REQUIRE_OPENSHIFT_GITOPS="${REQUIRE_OPENSHIFT_GITOPS:-true}"
+if [[ "${REQUIRE_OPENSHIFT_GITOPS}" == "true" || "${CREATE_ARGOCD_APPLICATION}" == "true" ]]; then
+  log "==> GitOps prerequisite check (participant bootstrap never installs the Operator)"
+  if ! bash "${ROOT}/scripts/check-openshift-gitops.sh"; then
+    die "BLOCKED_GITOPS_OPERATOR_NOT_INSTALLED (or not ready). Instructor must run: INSTALL_OPENSHIFT_GITOPS_OPERATOR=true make instructor-setup"
+  fi
+fi
+
+if [[ "${PACKMATE_REQUIRE_PORTABLE_PROD_IMAGE:-true}" == "true" ]]; then
+  if grep -qE 'image-registry\.openshift-image-registry\.svc' "${ROOT}/deploy/overlays/prod/kustomization.yaml"; then
+    die "BLOCKED_OLD_SANDBOX_PROD_IMAGE_REFERENCE: PROD overlay references an internal registry digest — restore durable GHCR baseline before bootstrap"
+  fi
+fi
+
 if [[ "${SKIP_CONFIRM}" != "true" ]]; then
   read -r -p "Continue with bootstrap in ${PACKMATE_NAMESPACE}? [y/N] " ans
   [[ "${ans}" == "y" || "${ans}" == "Y" ]] || die "Aborted by user"
