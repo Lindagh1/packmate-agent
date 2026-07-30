@@ -74,20 +74,77 @@ Ask your instructor for:
 
 You will **not** install Operators, deploy the Llama model, use an Argo CD admin password, or port-forward for the main path.
 
-Maximum early command sequence (Workbench terminal, after Module A steps A.2–A.3):
+### Exact Workbench clone step (always)
+
+`/opt/app-root/src` can contain Workbench files **without** being a Git repository. Never run `git` commands as if `/opt/app-root/src` itself were the Packmate repo.
+
+In the Workbench terminal:
 
 ```bash
-git clone https://github.com/Lindagh1/packmate-agent.git
+cd /opt/app-root/src
+
+git clone \
+  --branch packmate-v2 \
+  --single-branch \
+  https://github.com/Lindagh1/packmate-agent.git \
+  packmate-agent
+
 cd packmate-agent
+```
+
+Alternative if the clone already exists:
+
+```bash
+cd /opt/app-root/src/packmate-agent
 git switch packmate-v2
+git pull --ff-only origin packmate-v2
+```
+
+Or use the safe helper (never deletes `/opt/app-root/src` contents):
+
+```bash
+./scripts/setup-workbench-repository.sh
+```
+
+**All `make` commands must run from** `/opt/app-root/src/packmate-agent`.
+
+Expected:
+
+```bash
+git branch --show-current
+# → packmate-v2
+
+git log -1 --oneline
+# → latest packmate-v2 commit
+
+git status --short
+# → no tracked modifications
+```
+
+Then:
+
+```bash
 cp config/sandbox.env.example config/sandbox.env
 # paste instructor image refs — never commit this file
 make preflight
 make bootstrap
-make verify
+make verify-dev
 ```
 
-**Expected result:** After Module A, `make verify` prints `verify-sandbox: OK (lab core ready)`, and bootstrap has also prepared (but not deployed to) `packmate-prod`.
+### Git identity vs GitHub authentication
+
+| Need | What to use |
+|------|-------------|
+| Clone a public repo | No auth required |
+| Commit locally | `make configure-git` with `PACKMATE_GIT_NAME` / `PACKMATE_GIT_EMAIL` (repo-local only) |
+| Push / open a PR | GitHub SSO or personal access token — never stored by Packmate scripts |
+| `gh` CLI | Optional; **not** required for bootstrap or the Pipeline |
+
+```bash
+PACKMATE_GIT_NAME='Your Name' PACKMATE_GIT_EMAIL='you@example.com' make configure-git
+```
+
+**Expected result:** After Module A, `make verify-dev` prints `verify-sandbox: OK (lab core ready)`, and bootstrap has also prepared (but not deployed to) `packmate-prod`.
 
 ---
 
@@ -150,9 +207,13 @@ Participants create the project themselves so the OpenShift AI dashboard ownersh
 Bootstrap verifies the cluster, deploys the two MCP servers, backend, and frontend in `packmate-lab`, registers MCP endpoints, installs Pipeline `packmate-ci`, **prepares `packmate-prod`** (namespace, Secret, image-pull RBAC, Argo CD AppProject/Application, your Argo CD group), and prints remaining UI steps. It never rebuilds four images at lab start and never deploys workloads into `packmate-prod`.
 
 ```bash
-git clone https://github.com/Lindagh1/packmate-agent.git
+cd /opt/app-root/src
+git clone \
+  --branch packmate-v2 \
+  --single-branch \
+  https://github.com/Lindagh1/packmate-agent.git \
+  packmate-agent
 cd packmate-agent
-git switch packmate-v2
 ```
 
 [Screenshot required: Repository open in code-server]
@@ -169,7 +230,7 @@ Edit `config/sandbox.env` and set the four image lines from the instructor (dige
 ```bash
 make preflight
 make bootstrap
-make verify
+make verify-dev
 ```
 
 > **Pro Tip:**

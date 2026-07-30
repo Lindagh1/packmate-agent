@@ -14,6 +14,35 @@
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
 | Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
+## Workbench — `fatal: not a git repository`
+
+Symptom:
+
+```text
+fatal: not a git repository (or any of the parent directories): .git
+```
+
+Cause: Git was run from `/opt/app-root/src`, which can hold Workbench files **without** being a Git repository. The Packmate repo must live at `/opt/app-root/src/packmate-agent`.
+
+Fix:
+
+```bash
+cd /opt/app-root/src
+git clone --branch packmate-v2 --single-branch \
+  https://github.com/Lindagh1/packmate-agent.git packmate-agent
+cd packmate-agent
+```
+
+Or: `./scripts/setup-workbench-repository.sh` from an existing clone helper path. Do **not** delete files already present in `/opt/app-root/src`.
+
+## Workbench — target directory exists without `.git`
+
+If `/opt/app-root/src/packmate-agent` exists but is not a Git repo, the setup script stops safely and refuses to overwrite it. Rename/move that directory, then clone again.
+
+## Transient local TLS/CA error during dependency check
+
+A local throwaway venv may fail with a TLS/CA certificate path error. **In-cluster** validation (same Python image as Tekton) is the source of truth. If `make bootstrap` / Pipeline install succeeds, treat the local TLS error as WARN only — do not disable TLS verification and do not add `--trusted-host` workarounds.
+
 ## Tekton `packmate-ci` — `manifest unknown` / `ErrImagePull` for Python
 
 Symptom:
@@ -54,6 +83,14 @@ from mcp.client.streamable_http import streamable_http_client
 
 Fix: pull latest `packmate-v2` (do not patch imports in the Workbench by hand).
 
+## Tekton `packmate-ci` — wrong workspace type (EmptyDir)
+
+Symptom: **clone** Succeeds, later tasks fail as if the repository is missing; or `requirements-dev.txt` is not found.
+
+Cause: workspace **`source`** was started as **Empty Directory**. Each task gets a fresh empty volume, so clone output is invisible to **test** / **ai-quality-gate** / **build-backend**.
+
+Fix: Start again with **VolumeClaimTemplate**, **2 GiB**, access mode **ReadWriteOnce**. Do not edit Pipeline YAML. Do not delete the failed PipelineRun.
+
 ## Tekton `packmate-ci` — `requirements-dev.txt` not found
 
 Symptom:
@@ -67,7 +104,7 @@ Task **clone** is green; task **test** fails.
 Cause:
 
 1. Backend dependencies live in **`backend/requirements-dev.txt`** (not at repo root).
-2. More often in the UI: workspace **`source`** was started as **Empty Directory**. Each task gets a fresh empty volume, so the clone is invisible to **test** / **ai-quality-gate** / **build-backend**.
+2. More often: wrong workspace type (see EmptyDir section above).
 
 Fix:
 
@@ -78,7 +115,7 @@ Fix:
 oc create -n packmate-lab -f .tekton/lab/packmate-ci-run.yaml
 ```
 
-Do not delete the failed PipelineRun; create a new one. Do not copy `requirements-dev.txt` to the repository root.
+Do not delete the failed PipelineRun; create a new one. Do not copy `requirements-dev.txt` to the repository root. Do not manually edit digests or requirements pins.
 
 ## `oc: command not found`
 

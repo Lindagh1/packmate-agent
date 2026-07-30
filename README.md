@@ -63,12 +63,16 @@ flowchart TB
 ```bash
 cp config/sandbox.env.example config/sandbox.env
 # set digest-pinned *_IMAGE and LLM_* values from instructor
-make preflight              # cluster + image + RHOAI mirror checks
+# Workbench: clone into /opt/app-root/src/packmate-agent first (never treat /opt/app-root/src as the repo)
+make setup-workbench-repository   # optional safe clone/update helper
+make configure-git                # optional; PACKMATE_GIT_NAME / PACKMATE_GIT_EMAIL
+make preflight              # cluster + repo + image + RHOAI mirror checks
 make bootstrap              # DEV workloads + resolve/render Pipeline + PROD prep
 make verify / verify-dev    # DEV readiness (incl. Python digest + deps)
-make verify-python-deps     # clean-venv install against the RHOAI 3.4 mirror
+make verify-python-deps     # in-cluster install against the RHOAI 3.4 mirror
 make resolve-pipeline-python-image  # print current openshift/python:3.12-ubi9 digest ref
-make render-pipeline        # render packmate-ci from template (not committed)
+make render-pipeline        # render to .generated/tekton/packmate-ci.yaml (gitignored)
+make validate-pipeline      # dry-run validate rendered Pipeline
 make prepare-prod           # re-run PROD prep standalone (idempotent)
 make configure-argocd-rbac  # SSO group + AppProject promoter role
 make verify-prod            # PROD readiness after an Argo CD Sync
@@ -82,7 +86,7 @@ make cleanup                # interactive, DEV (packmate-lab) only
 
 ### Portable Pipeline Python image
 
-Do **not** commit sandbox-specific `openshift/python@sha256:…` digests. `make bootstrap` resolves `openshift/python:3.12-ubi9` on the current cluster, renders `.tekton/lab/packmate-ci.yaml.tpl`, and applies the generated YAML. Critical Python packages (`mcp==1.27.2`, `json-repair==0.25.3`, `pydantic==2.13.1`) are pinned to versions available on the RHOAI 3.4 package mirror — participants never edit requirements or Tekton YAML by hand.
+Do **not** commit sandbox-specific `openshift/python@sha256:…` digests. `make bootstrap` resolves `openshift/python:3.12-ubi9` on the current cluster, renders `.tekton/lab/packmate-ci.yaml.tpl` into `.generated/tekton/packmate-ci.yaml`, and applies that generated YAML. Critical Python packages (`mcp==1.27.2`, `json-repair==0.25.3`, `pydantic==2.13.1`) are pinned to versions available on the RHOAI 3.4 package mirror — participants never edit requirements or Tekton YAML by hand.
 
 ## Local development (optional)
 

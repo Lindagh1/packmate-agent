@@ -55,7 +55,8 @@ Use before each Packmate v2 (DEV → PROD) session.
 - [ ] Pipeline `packmate-ci` visible (if Pipelines present); one run Started with a **2Gi VolumeClaimTemplate** Succeeds with quality gate PASS
 - [ ] `make verify-python-deps` PASSes against the RHOAI 3.4 mirror (`mcp==1.27.2`, `json-repair==0.25.3`)
 - [ ] Deployed Pipeline Python image matches `oc get istag python:3.12-ubi9 -n openshift` (no obsolete `ae2c1317…` digest)
-- [ ] `.tekton/lab/packmate-ci.yaml.tpl` is tracked; rendered YAML under `.tekton/lab/generated/` is **not** committed
+- [ ] `.tekton/lab/packmate-ci.yaml.tpl` is tracked; rendered YAML under `.generated/tekton/` is **not** committed
+- [ ] Participant clone path documented as `/opt/app-root/src/packmate-agent` (never `/opt/app-root/src` as the repo)
 - [ ] `scripts/promote-backend-image.sh --pipelinerun <name> --namespace packmate-lab --create-pr` opens a PR touching only `deploy/overlays/prod/kustomization.yaml`
 - [ ] Merge the smoke PR, confirm Argo `packmate-prod` goes OutOfSync, Sync it, confirm Synced/Healthy
 - [ ] `make verify-prod` → OK; PROD Frontend Route serves UI

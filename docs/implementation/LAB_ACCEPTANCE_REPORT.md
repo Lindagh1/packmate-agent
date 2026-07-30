@@ -12,12 +12,14 @@
 
 | Item | Result |
 |------|--------|
-| Template | `.tekton/lab/packmate-ci.yaml.tpl` with `__PACKMATE_PIPELINE_PYTHON_IMAGE__` |
+| Template | `.tekton/lab/packmate-ci.yaml.tpl` with `__PACKMATE_PIPELINE_PYTHON_IMAGE__` / CLI placeholders as Pipeline param defaults |
+| Rendered | `.generated/tekton/packmate-ci.yaml` (gitignored) |
 | Resolve | `scripts/resolve-pipeline-python-image.sh` → internal digest of `openshift/python:3.12-ubi9` |
 | Deps | `mcp==1.27.2`, `json-repair==0.25.3`, `pydantic==2.13.1` (RHOAI 3.4 cpu-ubi9 x86_64) |
 | MCP API | `streamable_http_client` |
-| Check | `make verify-python-deps` / `scripts/check-rhoai-python-dependencies.sh` |
-| Bootstrap | resolve → deps check → render → apply rendered Pipeline (never apply obsolete digest YAML) |
+| Check | `make verify-python-deps` (in-cluster source of truth) |
+| Workbench | `scripts/setup-workbench-repository.sh` clones into `/opt/app-root/src/packmate-agent` |
+| Bootstrap | resolve → in-cluster deps → render → validate → apply rendered Pipeline |
 
 Do not commit rendered digests. Participants never hand-edit Tekton YAML or requirements.
 
