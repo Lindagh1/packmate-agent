@@ -488,8 +488,18 @@ spec:
               fi
               cp /var/run/secrets/packmate-ghcr-push/.dockerconfigjson "${AUTHFILE}"
               chmod 600 "${AUTHFILE}"
+              # Authenticate to the internal OpenShift registry with the Pipeline SA token.
+              SRC_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              SRC_CA="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+              [[ -f "${SRC_CA}" ]] || SRC_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
               echo "Copying ${INTERNAL} -> ${EXT_REPO}:${EXT_TAG}"
-              skopeo copy --authfile "${AUTHFILE}" --all "docker://${INTERNAL}" "docker://${EXT_REPO}:${EXT_TAG}"
+              skopeo copy \
+                --src-creds "pipeline:${SRC_TOKEN}" \
+                --src-cert-dir /var/run/secrets/kubernetes.io/serviceaccount \
+                --dest-authfile "${AUTHFILE}" \
+                --all \
+                "docker://${INTERNAL}" "docker://${EXT_REPO}:${EXT_TAG}"
+              unset SRC_TOKEN
               DIGEST="$(skopeo inspect --authfile "${AUTHFILE}" "docker://${EXT_REPO}:${EXT_TAG}" --format '{{.Digest}}')"
               [[ "${DIGEST}" == sha256:* ]] || { echo "Missing destination digest"; exit 1; }
               EXT_REF="${EXT_REPO}@${DIGEST}"
