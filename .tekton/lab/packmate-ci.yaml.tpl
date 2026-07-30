@@ -455,7 +455,7 @@ spec:
               - name: PACKMATE_PROMOTION_REGISTRY
                 value: ghcr.io
               - name: PACKMATE_PROMOTION_REGISTRY_OWNER
-                value: Lindagh1
+                value: lindagh1
               - name: PACKMATE_PROMOTION_IMAGE_NAME
                 value: packmate-backend
               - name: PACKMATE_PROMOTION_REGISTRY_MODE
@@ -474,7 +474,10 @@ spec:
               GIT_SHORT="$(printf '%s' "${GIT_COMMIT}" | cut -c1-7)"
               PR_NAME="$(printf '%s' "${POD_NAME}" | sed -E 's/-publish-candidate.*//;s/-pod$//')"
               EXT_TAG="${GIT_SHORT}-${PR_NAME}"
-              EXT_REPO="${PACKMATE_PROMOTION_REGISTRY}/${PACKMATE_PROMOTION_REGISTRY_OWNER}/${PACKMATE_PROMOTION_IMAGE_NAME}"
+              EXT_REPO="$(printf '%s/%s/%s' \
+                "${PACKMATE_PROMOTION_REGISTRY}" \
+                "$(printf '%s' "${PACKMATE_PROMOTION_REGISTRY_OWNER}" | tr '[:upper:]' '[:lower:]')" \
+                "${PACKMATE_PROMOTION_IMAGE_NAME}")"
               AUTHFILE="$(mktemp)"
               cleanup() { rm -f "${AUTHFILE}"; }
               trap cleanup EXIT
