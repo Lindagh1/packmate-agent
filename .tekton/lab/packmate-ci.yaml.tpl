@@ -2,6 +2,7 @@
 # DO NOT apply this file directly. Bootstrap renders it with the current sandbox
 # Python digest via scripts/render-packmate-pipeline.sh.
 # Placeholder: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+# Placeholder: __PACKMATE_PIPELINE_CLI_IMAGE__
 # Participant: OpenShift Console → Pipelines → packmate-ci → Start
 # IMPORTANT: workspace "source" MUST use a VolumeClaimTemplate (shared PVC).
 #            Empty Directory does NOT persist between tasks — clone output is lost.
@@ -327,7 +328,7 @@ spec:
           - name: GIT_COMMIT
         steps:
           - name: start-build
-            image: image-registry.openshift-image-registry.svc:5000/openshift/cli@sha256:dd7dab5b6ec92b6eecefec17f84bb3df525692f39a44f3d8c22b4469e420f0f3
+            image: __PACKMATE_PIPELINE_CLI_IMAGE__
             workingDir: $(workspaces.source.path)
             env:
               - name: NAMESPACE

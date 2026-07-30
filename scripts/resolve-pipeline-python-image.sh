@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Resolve openshift/python:3.12-ubi9 to an immutable internal digest reference.
+# Resolve an OpenShift ImageStreamTag to an immutable internal digest reference.
+# Default: openshift/python:3.12-ubi9 (Pipeline Python image).
+# Also used for openshift/cli:latest → digest (build-backend step).
 # Prints ONLY the image reference on stdout. Diagnostics go to stderr.
 set -euo pipefail
 
@@ -7,13 +9,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/lib/sandbox-common.sh"
 
-ISTREAM_NS="${PACKMATE_PYTHON_ISTREAM_NS:-openshift}"
-ISTREAM_NAME="${PACKMATE_PYTHON_ISTREAM_NAME:-python}"
-ISTREAM_TAG="${PACKMATE_PYTHON_ISTREAM_TAG:-3.12-ubi9}"
+ISTREAM_NS="${PACKMATE_PIPELINE_ISTREAM_NS:-${PACKMATE_PYTHON_ISTREAM_NS:-openshift}}"
+ISTREAM_NAME="${PACKMATE_PIPELINE_ISTREAM_NAME:-${PACKMATE_PYTHON_ISTREAM_NAME:-python}}"
+ISTREAM_TAG="${PACKMATE_PIPELINE_ISTREAM_TAG:-${PACKMATE_PYTHON_ISTREAM_TAG:-3.12-ubi9}}"
+PROBE_KIND="${PACKMATE_PIPELINE_IMAGE_PROBE:-python}" # python | oc | none
 PROBE_NS="${PACKMATE_NAMESPACE:-packmate-lab}"
 ALLOW_NON_DIGEST="${PACKMATE_ALLOW_NON_DIGEST_PYTHON_IMAGE:-false}"
 PULL_TIMEOUT_SECS="${PACKMATE_PYTHON_IMAGE_PULL_TIMEOUT_SECS:-180}"
 INTERNAL_REGISTRY="${PACKMATE_INTERNAL_REGISTRY:-image-registry.openshift-image-registry.svc:5000}"
+IMAGE_OVERRIDE="${PACKMATE_PIPELINE_IMAGE_OVERRIDE:-${PACKMATE_PIPELINE_PYTHON_IMAGE:-}}"
 
 log() { printf '%s\n' "$*" >&2; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -26,26 +30,53 @@ redact() {
 
 validate_image_ref() {
   local img="$1"
-  [[ -n "${img}" ]] || die "Python image reference is empty"
-  if [[ "${img}" == *":latest" || "${img}" == *:latest@* ]]; then
-    die "Python image must not use :latest (${img})"
+  [[ -n "${img}" ]] || die "Image reference is empty"
+  # Reject tag-based :latest references (digest refs never end with :latest).
+  if [[ "${img}" == *:latest || "${img}" == *:latest@* ]]; then
+    die "Image must not use :latest (${img})"
   fi
   if [[ "${img}" != *"@"* ]]; then
     if [[ "${ALLOW_NON_DIGEST}" == "true" ]]; then
-      log "WARNING: non-digest Python image allowed by PACKMATE_ALLOW_NON_DIGEST_PYTHON_IMAGE"
+      log "WARNING: non-digest image allowed by PACKMATE_ALLOW_NON_DIGEST_PYTHON_IMAGE"
       return 0
     fi
-    die "Python image must be digest-pinned (got: ${img})"
+    die "Image must be digest-pinned (got: ${img})"
   fi
   local digest="${img##*@}"
-  [[ "${digest}" == sha256:* ]] || die "Python image digest must start with sha256: (got: ${digest})"
-  [[ "${#digest}" -gt 10 ]] || die "Python image digest looks empty/invalid"
+  [[ "${digest}" == sha256:* ]] || die "Image digest must start with sha256: (got: ${digest})"
+  [[ "${#digest}" -gt 10 ]] || die "Image digest looks empty/invalid"
+}
+
+verify_probe_payload() {
+  local pod="$1" ns="$2"
+  case "${PROBE_KIND}" in
+    python)
+      local pyver
+      pyver="$(oc -n "${ns}" exec "${pod}" -- python --version 2>&1 | redact || true)"
+      printf '%s\n' "${pyver}" | grep -Eq 'Python 3\.12' || {
+        die "Resolved image python version is not 3.12 (${pyver})"
+      }
+      log "PASS  Pipeline image pull verified (${pyver})"
+      ;;
+    oc)
+      local ocver
+      ocver="$(oc -n "${ns}" exec "${pod}" -- oc version --client 2>&1 | head -1 | redact || true)"
+      [[ -n "${ocver}" ]] || die "Resolved CLI image has no working oc client"
+      log "PASS  Pipeline CLI image pull verified (${ocver})"
+      ;;
+    none)
+      log "PASS  Pipeline image pull verified (pod Ready)"
+      ;;
+    *)
+      die "Unknown PACKMATE_PIPELINE_IMAGE_PROBE=${PROBE_KIND}"
+      ;;
+  esac
 }
 
 pull_probe() {
   local img="$1"
   local ns="$2"
-  local pod="packmate-pyimg-probe-$$"
+  local pod="packmate-img-probe-$$"
   local deadline=$((SECONDS + PULL_TIMEOUT_SECS))
   local last=""
 
@@ -65,20 +96,13 @@ EOF
     phase="$(oc -n "${ns}" get pod "${pod}" -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)"
     ready="$(oc -n "${ns}" get pod "${pod}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
     if [[ "${ready}" == "True" ]]; then
-      local pyver
-      pyver="$(oc -n "${ns}" exec "${pod}" -- python --version 2>&1 | redact || true)"
-      printf '%s\n' "${pyver}" | grep -Eq 'Python 3\.12' || {
-        oc -n "${ns}" delete pod "${pod}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-        die "Resolved image python version is not 3.12 (${pyver})"
-      }
-      log "PASS  Pipeline Python image pull verified (${pyver})"
+      verify_probe_payload "${pod}" "${ns}"
       oc -n "${ns}" delete pod "${pod}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
       return 0
     fi
     if [[ "${phase}" == "Failed" ]]; then
       last="$(oc -n "${ns}" get pod "${pod}" -o jsonpath='{.status.containerStatuses[0].state.waiting.reason}' 2>/dev/null || true)"
       if [[ "${last}" == "ErrImagePull" || "${last}" == "ImagePullBackOff" ]]; then
-        # Retry once by recreating the pod for transient registry blips.
         oc -n "${ns}" delete pod "${pod}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
         sleep 3
         oc -n "${ns}" run "${pod}" --image="${img}" --restart=Never --quiet \
@@ -94,14 +118,14 @@ EOF
 
   last="$(oc -n "${ns}" describe pod "${pod}" 2>/dev/null | grep -E 'Failed|ErrImage|Back-off|error' | head -5 | redact || true)"
   oc -n "${ns}" delete pod "${pod}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-  die "Unable to pull Pipeline Python image within ${PULL_TIMEOUT_SECS}s${last:+ (${last})}"
+  die "Unable to pull Pipeline image within ${PULL_TIMEOUT_SECS}s${last:+ (${last})}"
 }
 
 packmate_require_oc
 
-if [[ -n "${PACKMATE_PIPELINE_PYTHON_IMAGE:-}" ]]; then
-  IMG="${PACKMATE_PIPELINE_PYTHON_IMAGE}"
-  log "Using PACKMATE_PIPELINE_PYTHON_IMAGE override"
+if [[ -n "${IMAGE_OVERRIDE}" ]]; then
+  IMG="${IMAGE_OVERRIDE}"
+  log "Using image override"
   validate_image_ref "${IMG}"
   if [[ "${PACKMATE_SKIP_PYTHON_IMAGE_PULL_PROBE:-false}" != "true" ]]; then
     pull_probe "${IMG}" "${PROBE_NS}"

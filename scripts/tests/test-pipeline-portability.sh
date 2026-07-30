@@ -20,10 +20,16 @@ if [[ -f "${TPL}" ]] && ! grep -q "${OBSOLETE}" "${TPL}"; then
 else
   fail "14. Pipeline template has no obsolete digest"
 fi
-if [[ -f "${TPL}" ]] && grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}"; then
-  pass "15. Pipeline template contains portable placeholder"
+if [[ -f "${TPL}" ]] && grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}" \
+  && grep -q '__PACKMATE_PIPELINE_CLI_IMAGE__' "${TPL}"; then
+  pass "15. Pipeline template contains portable placeholders"
 else
-  fail "15. Pipeline template contains portable placeholder"
+  fail "15. Pipeline template contains portable placeholders"
+fi
+if [[ -f "${TPL}" ]] && ! grep -qE 'sha256:dd7dab5b6ec92b6eecefec17f84bb3df525692f39a44f3d8c22b4469e420f0f3' "${TPL}"; then
+  pass "15b. Pipeline template has no obsolete CLI digest"
+else
+  fail "15b. Pipeline template has no obsolete CLI digest"
 fi
 if [[ -f "${TPL}" ]] && ! grep -qE 'image:.*:latest([[:space:]]|$)' "${TPL}"; then
   pass "16. Template has no :latest Python/image tags"
