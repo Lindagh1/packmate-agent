@@ -441,7 +441,7 @@ spec:
           - name: PROMOTION_REGISTRY_VERIFIED
         steps:
           - name: publish
-            image: $(params.cli-image)
+            image: quay.io/skopeo/stable@sha256:be15097a3e99a1fe72838b3d626d1c283db38626536fff5e04ab6bbb814baeca
             workingDir: $(workspaces.source.path)
             env:
               - name: NAMESPACE
@@ -475,43 +475,22 @@ spec:
               PR_NAME="$(printf '%s' "${POD_NAME}" | sed -E 's/-publish-candidate.*//;s/-pod$//')"
               EXT_TAG="${GIT_SHORT}-${PR_NAME}"
               EXT_REPO="${PACKMATE_PROMOTION_REGISTRY}/${PACKMATE_PROMOTION_REGISTRY_OWNER}/${PACKMATE_PROMOTION_IMAGE_NAME}"
-              AUTHDIR="$(mktemp -d)"
-              cleanup() { rm -rf "${AUTHDIR}"; }
+              AUTHFILE="$(mktemp)"
+              cleanup() { rm -f "${AUTHFILE}"; }
               trap cleanup EXIT
               if [[ ! -f /var/run/secrets/packmate-ghcr-push/.dockerconfigjson ]]; then
                 echo "ERROR: push Secret packmate-ghcr-push not mounted"
                 echo "Instructor: make configure-promotion-registry"
                 exit 1
               fi
-              cp /var/run/secrets/packmate-ghcr-push/.dockerconfigjson "${AUTHDIR}/config.json"
-              chmod 600 "${AUTHDIR}/config.json"
-              export DOCKER_CONFIG="${AUTHDIR}"
-              export REGISTRY_AUTH_FILE="${AUTHDIR}/config.json"
-              echo "Mirroring ${INTERNAL} -> ${EXT_REPO}:${EXT_TAG}"
-              oc image mirror --keep-manifest-list=true --filter-by-os='.*' \
-                "${INTERNAL}" "${EXT_REPO}:${EXT_TAG}"
-              export EXT_TAG
-              DIGEST="$(python3 - <<'PY'
-import json, os, urllib.request
-cfg = json.load(open(os.environ["REGISTRY_AUTH_FILE"]))
-auth = cfg["auths"]["ghcr.io"]["auth"]
-owner = os.environ["PACKMATE_PROMOTION_REGISTRY_OWNER"].lower()
-name = os.environ["PACKMATE_PROMOTION_IMAGE_NAME"]
-tag = os.environ["EXT_TAG"]
-url = f"https://ghcr.io/v2/{owner}/{name}/manifests/{tag}"
-req = urllib.request.Request(url, headers={
-  "Authorization": "Basic " + auth,
-  "Accept": "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json",
-})
-with urllib.request.urlopen(req, timeout=60) as resp:
-  digest = resp.headers.get("Docker-Content-Digest")
-  if not digest:
-    raise SystemExit("missing Docker-Content-Digest")
-  print(digest)
-PY
-)"
+              cp /var/run/secrets/packmate-ghcr-push/.dockerconfigjson "${AUTHFILE}"
+              chmod 600 "${AUTHFILE}"
+              echo "Copying ${INTERNAL} -> ${EXT_REPO}:${EXT_TAG}"
+              skopeo copy --authfile "${AUTHFILE}" --all "docker://${INTERNAL}" "docker://${EXT_REPO}:${EXT_TAG}"
+              DIGEST="$(skopeo inspect --authfile "${AUTHFILE}" "docker://${EXT_REPO}:${EXT_TAG}" --format '{{.Digest}}')"
               [[ "${DIGEST}" == sha256:* ]] || { echo "Missing destination digest"; exit 1; }
               EXT_REF="${EXT_REPO}@${DIGEST}"
+              skopeo inspect --authfile "${AUTHFILE}" "docker://${EXT_REF}" >/dev/null
               case "${EXT_REF}" in
                 image-registry.openshift-image-registry.svc:*|*.svc:*|172.30.*)
                   echo "ERROR: promotion reference must be external"; exit 1 ;;
