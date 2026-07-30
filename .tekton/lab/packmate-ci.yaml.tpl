@@ -75,6 +75,14 @@ spec:
     - name: quality-threshold
       type: string
       default: "0.90"
+    - name: python-image
+      type: string
+      description: Immutable openshift/python digest resolved at bootstrap
+      default: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+    - name: cli-image
+      type: string
+      description: Immutable openshift/cli digest resolved at bootstrap
+      default: __PACKMATE_PIPELINE_CLI_IMAGE__
   workspaces:
     - name: source
       description: >
@@ -84,6 +92,8 @@ spec:
   tasks:
     - name: clone
       params:
+        - name: python-image
+          value: $(params.python-image)
         - name: url
           value: $(params.git-url)
         - name: revision
@@ -93,13 +103,14 @@ spec:
           workspace: source
       taskSpec:
         params:
+          - name: python-image
           - name: url
           - name: revision
         workspaces:
           - name: source
         steps:
           - name: clone
-            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+            image: $(params.python-image)
             workingDir: $(workspaces.source.path)
             env:
               - name: URL
@@ -145,12 +156,17 @@ spec:
       workspaces:
         - name: source
           workspace: source
+      params:
+        - name: python-image
+          value: $(params.python-image)
       taskSpec:
+        params:
+          - name: python-image
         workspaces:
           - name: source
         steps:
           - name: backend-pytest
-            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+            image: $(params.python-image)
             workingDir: $(workspaces.source.path)/backend
             script: |
               #!/usr/bin/env bash
@@ -175,7 +191,6 @@ spec:
               source /tmp/venv/bin/activate
               # RHOAI 3.4 mirror only — never fall back to public PyPI.
               export PIP_INDEX_URL="${RHOAI_PYPI_INDEX_URL:-https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple}"
-              export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-console.redhat.com}"
               unset PIP_EXTRA_INDEX_URL || true
               python -m pip install -q -U pip
               python -m pip install -q -r requirements-dev.txt
@@ -185,6 +200,8 @@ spec:
     - name: ai-quality-gate
       runAfter: [test]
       params:
+        - name: python-image
+          value: $(params.python-image)
         - name: threshold
           value: $(params.quality-threshold)
       workspaces:
@@ -192,6 +209,7 @@ spec:
           workspace: source
       taskSpec:
         params:
+          - name: python-image
           - name: threshold
         workspaces:
           - name: source
@@ -201,7 +219,7 @@ spec:
           - name: scenarios
         steps:
           - name: gate
-            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+            image: $(params.python-image)
             workingDir: $(workspaces.source.path)/backend
             env:
               - name: THRESHOLD
@@ -229,7 +247,6 @@ spec:
               source /tmp/venv/bin/activate
               # RHOAI 3.4 mirror only — never fall back to public PyPI.
               export PIP_INDEX_URL="${RHOAI_PYPI_INDEX_URL:-https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple}"
-              export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-console.redhat.com}"
               unset PIP_EXTRA_INDEX_URL || true
               python -m pip install -q -U pip
               python -m pip install -q -r requirements-dev.txt
@@ -257,12 +274,17 @@ spec:
       workspaces:
         - name: source
           workspace: source
+      params:
+        - name: python-image
+          value: $(params.python-image)
       taskSpec:
+        params:
+          - name: python-image
         workspaces:
           - name: source
         steps:
           - name: check
-            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+            image: $(params.python-image)
             workingDir: $(workspaces.source.path)
             script: |
               #!/usr/bin/env bash
@@ -316,7 +338,12 @@ spec:
       workspaces:
         - name: source
           workspace: source
+      params:
+        - name: cli-image
+          value: $(params.cli-image)
       taskSpec:
+        params:
+          - name: cli-image
         workspaces:
           - name: source
         results:
@@ -328,7 +355,7 @@ spec:
           - name: GIT_COMMIT
         steps:
           - name: start-build
-            image: __PACKMATE_PIPELINE_CLI_IMAGE__
+            image: $(params.cli-image)
             workingDir: $(workspaces.source.path)
             env:
               - name: NAMESPACE
@@ -382,6 +409,8 @@ spec:
     - name: publish-result
       runAfter: [build-backend]
       params:
+        - name: python-image
+          value: $(params.python-image)
         - name: digest
           value: $(tasks.build-backend.results.digest)
         - name: image_url
@@ -398,6 +427,7 @@ spec:
           value: $(tasks.ai-quality-gate.results.scenarios)
       taskSpec:
         params:
+          - name: python-image
           - name: digest
           - name: image_url
           - name: image_reference
@@ -415,7 +445,7 @@ spec:
           - name: PIPELINERUN_NAME
         steps:
           - name: summary
-            image: __PACKMATE_PIPELINE_PYTHON_IMAGE__
+            image: $(params.python-image)
             env:
               - name: POD_NAME
                 valueFrom:

@@ -17,5 +17,8 @@ evaluations/reports/*
 deploy/rendered/*
 !deploy/rendered/.gitkeep
 config/sandbox.env
-.tekton/lab/generated/packmate-ci.rendered.yaml
+.generated/**
+!.generated/tekton/
+!.generated/tekton/.gitkeep
+.tekton/lab/generated/
 .tekton/lab/packmate-ci.rendered.yaml

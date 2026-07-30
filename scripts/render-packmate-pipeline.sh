@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TPL="${ROOT}/.tekton/lab/packmate-ci.yaml.tpl"
-OUT_DIR="${ROOT}/.tekton/lab/generated"
-OUT="${PACKMATE_RENDERED_PIPELINE:-${OUT_DIR}/packmate-ci.rendered.yaml}"
+OUT_DIR="${ROOT}/.generated/tekton"
+OUT="${PACKMATE_RENDERED_PIPELINE:-${OUT_DIR}/packmate-ci.yaml}"
 OBSOLETE_PY_DIGEST="sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb"
 OBSOLETE_CLI_DIGEST="sha256:dd7dab5b6ec92b6eecefec17f84bb3df525692f39a44f3d8c22b4469e420f0f3"
 PY_PLACEHOLDER="__PACKMATE_PIPELINE_PYTHON_IMAGE__"
@@ -70,23 +70,17 @@ python3 - "${OUT}" "${PY_IMG}" "${CLI_IMG}" <<'PY'
 import re, sys
 path, py_expected, cli_expected = sys.argv[1:4]
 text = open(path, encoding="utf-8").read()
+# Defaults and step images
+if py_expected not in text:
+    raise SystemExit("resolved python image missing from rendered Pipeline")
+if cli_expected not in text:
+    raise SystemExit("resolved cli image missing from rendered Pipeline")
 images = re.findall(r'^\s+image:\s+(\S+)\s*$', text, flags=re.M)
-py_images = [i for i in images if "/python@" in i]
-cli_images = [i for i in images if "/cli@" in i]
-if not py_images:
-    raise SystemExit("No python images found in rendered Pipeline")
-if not cli_images:
-    raise SystemExit("No cli images found in rendered Pipeline")
-bad_py = [i for i in py_images if i != py_expected]
-bad_cli = [i for i in cli_images if i != cli_expected]
-if bad_py:
-    raise SystemExit(f"Unexpected python image(s): {bad_py}; expected {py_expected}")
-if bad_cli:
-    raise SystemExit(f"Unexpected cli image(s): {bad_cli}; expected {cli_expected}")
+# After param conversion, step images are $(params.python-image); digests appear in defaults.
 latest = [i for i in images if i.endswith(":latest") or ":latest@" in i]
 if latest:
     raise SystemExit(f":latest forbidden: {latest}")
-print(f"python_images={len(py_images)} cli_images={len(cli_images)}", file=sys.stderr)
+print(f"rendered_ok python={py_expected.split('@')[-1][:19]}…", file=sys.stderr)
 PY
 
 if command -v oc >/dev/null 2>&1 && oc whoami >/dev/null 2>&1; then

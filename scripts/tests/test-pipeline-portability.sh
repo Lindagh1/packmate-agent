@@ -138,21 +138,24 @@ rm -f "${CFG}"
 
 # 17. Different digests are accepted by renderer (placeholder substitution)
 FAKE_IMG='image-registry.openshift-image-registry.svc:5000/openshift/python@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+FAKE_CLI='image-registry.openshift-image-registry.svc:5000/openshift/cli@sha256:cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe'
 OUT="$(mktemp)"
 PACKMATE_PIPELINE_PYTHON_IMAGE="${FAKE_IMG}" \
+PACKMATE_PIPELINE_CLI_IMAGE="${FAKE_CLI}" \
 PACKMATE_RENDERED_PIPELINE="${OUT}" \
 PACKMATE_SKIP_PYTHON_IMAGE_PULL_PROBE=true \
   bash -c '
-    # Bypass oc dry-run by unsetting oc temporarily if needed — renderer calls resolve only when override unset.
     ROOT="'"${ROOT}"'"
     TPL="'"${TPL}"'"
-    python3 - "$TPL" "'"${OUT}"'" "__PACKMATE_PIPELINE_PYTHON_IMAGE__" "'"${FAKE_IMG}"'" <<'"'"'PY'"'"'
+    python3 - "$TPL" "'"${OUT}"'" "__PACKMATE_PIPELINE_PYTHON_IMAGE__" "'"${FAKE_IMG}"'" "__PACKMATE_PIPELINE_CLI_IMAGE__" "'"${FAKE_CLI}"'" <<'"'"'PY'"'"'
 import sys
-tpl, out, ph, img = sys.argv[1:5]
-open(out,"w",encoding="utf-8").write(open(tpl,encoding="utf-8").read().replace(ph,img))
+tpl, out, py_ph, py_img, cli_ph, cli_img = sys.argv[1:7]
+text = open(tpl, encoding="utf-8").read().replace(py_ph, py_img).replace(cli_ph, cli_img)
+open(out, "w", encoding="utf-8").write(text)
 PY
   '
-if grep -q "${FAKE_IMG}" "${OUT}" && ! grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${OUT}"; then
+if grep -q "${FAKE_IMG}" "${OUT}" && grep -q "${FAKE_CLI}" "${OUT}" \
+  && ! grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${OUT}"; then
   pass "17. New sandbox digest can be rendered via placeholder"
 else
   fail "17. New sandbox digest can be rendered via placeholder"
