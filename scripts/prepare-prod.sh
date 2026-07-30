@@ -161,8 +161,12 @@ fi
 # 7) Optional: participant Argo CD RBAC (Sync-only on packmate-prod)
 # ---------------------------------------------------------------------------
 if [[ "${CREATE_ARGOCD_RBAC}" == "true" ]]; then
-  log "==> CREATE_ARGOCD_RBAC=true — running scripts/configure-argocd-lab-rbac.sh"
-  bash "${ROOT}/scripts/configure-argocd-lab-rbac.sh"
+  if oc get crd argocds.argoproj.io >/dev/null 2>&1; then
+    log "==> CREATE_ARGOCD_RBAC=true — running scripts/configure-argocd-lab-rbac.sh"
+    bash "${ROOT}/scripts/configure-argocd-lab-rbac.sh"
+  else
+    warn "CREATE_ARGOCD_RBAC=true but ArgoCD CRD absent — skip RBAC (install GitOps first)"
+  fi
 else
   log "SKIP: CREATE_ARGOCD_RBAC=false — not configuring participant Argo CD RBAC"
 fi

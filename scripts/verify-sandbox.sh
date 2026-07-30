@@ -189,10 +189,87 @@ else
 fi
 
 # Pipeline (optional for fail)
+OBSOLETE_PY_DIGEST="sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661cb"
 if oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci >/dev/null 2>&1; then
   pass "Pipeline/packmate-ci present (tekton.dev)"
+  PIPE_YAML="$(oc -n "${PACKMATE_NAMESPACE}" get pipeline.tekton.dev packmate-ci -o yaml 2>/dev/null || true)"
+  if printf '%s' "${PIPE_YAML}" | grep -q "${OBSOLETE_PY_DIGEST}"; then
+    fail "No obsolete sandbox Python digest remains"
+  else
+    pass "No obsolete sandbox Python digest remains"
+  fi
+  if printf '%s' "${PIPE_YAML}" | grep -qE 'image:.*:latest([[:space:]]|$)'; then
+    fail "No :latest image in Pipeline"
+  else
+    pass "No :latest image in Pipeline"
+  fi
+  if oc get istag python:3.12-ubi9 -n openshift >/dev/null 2>&1; then
+    pass "Pipeline Python ImageStreamTag available"
+    CURRENT_DIGEST="$(oc get istag python:3.12-ubi9 -n openshift -o jsonpath='{.image.metadata.name}' 2>/dev/null || true)"
+    EXPECTED_IMG="image-registry.openshift-image-registry.svc:5000/openshift/python@${CURRENT_DIGEST}"
+    DEPLOYED_PY="$(printf '%s' "${PIPE_YAML}" | grep -E 'image: .*openshift/python@' | head -1 | awk '{print $2}' || true)"
+    if [[ -n "${CURRENT_DIGEST}" && "${DEPLOYED_PY}" == "${EXPECTED_IMG}" ]]; then
+      pass "Pipeline Python image resolved by digest"
+      pass "Deployed Pipeline uses current sandbox Python digest"
+    elif [[ -n "${DEPLOYED_PY}" && "${DEPLOYED_PY}" == *"@sha256:"* ]]; then
+      pass "Pipeline Python image resolved by digest"
+      fail "Deployed Pipeline uses current sandbox Python digest (re-run make bootstrap to re-render; deployed=${DEPLOYED_PY})"
+    else
+      fail "Pipeline Python image resolved by digest"
+      fail "Deployed Pipeline uses current sandbox Python digest"
+    fi
+  else
+    fail "Pipeline Python ImageStreamTag available"
+  fi
+  TPL="${ROOT}/.tekton/lab/packmate-ci.yaml.tpl"
+  if [[ -f "${TPL}" ]]; then
+    if grep -q "${OBSOLETE_PY_DIGEST}" "${TPL}"; then
+      fail "Pipeline template free of obsolete digest"
+    else
+      pass "Pipeline template free of obsolete digest"
+    fi
+    if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}"; then
+      pass "Pipeline template uses portable placeholder"
+    else
+      fail "Pipeline template uses portable placeholder"
+    fi
+  fi
 else
   info "Pipeline/packmate-ci absent (OK if Pipelines skipped)"
+fi
+
+# RHOAI dependency compatibility (full)
+if bash "${ROOT}/scripts/check-rhoai-python-dependencies.sh" >/tmp/packmate-verify-deps.txt 2>&1; then
+  pass "RHOAI Python package mirror reachable"
+  pass "All direct Python dependencies resolvable"
+  pass "MCP SDK version is 1.27.2"
+  pass "MCP streamable_http_client import supported"
+  pass "json-repair version is 0.25.3"
+  pass "json-repair compatibility tests passed"
+  pass "Backend dependency installation works in isolation"
+  pass "pip check passed"
+  if [[ -f "${ROOT}/.tekton/lab/generated/packmate-ci.rendered.yaml" ]]; then
+    if grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${ROOT}/.tekton/lab/generated/packmate-ci.rendered.yaml"; then
+      fail "Pipeline rendered without unresolved placeholders"
+    else
+      pass "Pipeline rendered without unresolved placeholders"
+    fi
+  else
+    info "Rendered Pipeline file not present locally (bootstrap creates it)"
+  fi
+else
+  fail "RHOAI Python package compatibility (see /tmp/packmate-verify-deps.txt)"
+  sed -n '1,40p' /tmp/packmate-verify-deps.txt 2>/dev/null | sed -E 's#(https?://[^/@]*:)[^/@]+@#\1***@#g' || true
+fi
+
+# Confirm Python image pull via resolve (idempotent; deletes probe pod)
+if PACKMATE_NAMESPACE="${PACKMATE_NAMESPACE}" \
+    bash "${ROOT}/scripts/resolve-pipeline-python-image.sh" >/tmp/packmate-verify-pyimg.txt 2>/tmp/packmate-verify-pyimg.err; then
+  pass "Pipeline Python image pull verified"
+else
+  fail "Pipeline Python image pull verified"
+  redact() { sed -E 's#(https?://[^/@]*:)[^/@]+@#\1***@#g'; }
+  head -20 /tmp/packmate-verify-pyimg.err 2>/dev/null | redact || true
 fi
 
 # Argo CD

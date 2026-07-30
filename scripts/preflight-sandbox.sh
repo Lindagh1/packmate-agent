@@ -188,6 +188,19 @@ else
   opt "EvalHub CRD absent (optional)"
 fi
 
+# RHOAI Python mirror + ImageStream (lightweight — full check runs in bootstrap)
+if PACKMATE_DEPS_LIGHTWEIGHT=true bash "${ROOT}/scripts/check-rhoai-python-dependencies.sh" >/tmp/packmate-preflight-deps.txt 2>&1; then
+  pass "RHOAI Python package mirror reachable (lightweight)"
+else
+  block "RHOAI Python package mirror check failed (see /tmp/packmate-preflight-deps.txt)"
+fi
+
+if oc get istag python:3.12-ubi9 -n openshift >/dev/null 2>&1; then
+  pass "Pipeline Python ImageStreamTag openshift/python:3.12-ubi9 available"
+else
+  block "Pipeline Python ImageStreamTag openshift/python:3.12-ubi9 missing"
+fi
+
 printf '\n=== Summary ===\n'
 printf 'PASS=%s WARNING=%s BLOCKED=%s OPTIONAL_UNAVAILABLE=%s\n' "${PASS}" "${WARN}" "${BLOCK}" "${OPT}"
 if [[ "${BLOCK}" -gt 0 ]]; then
