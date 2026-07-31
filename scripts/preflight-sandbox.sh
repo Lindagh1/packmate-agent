@@ -237,6 +237,14 @@ else
   block "Missing .tekton/lab/packmate-ci.yaml.tpl"
 fi
 
+# Ownership guard (static — no cluster mutation)
+if bash "${ROOT}/scripts/check-resource-ownership.sh" >/tmp/packmate-preflight-own.txt 2>&1; then
+  pass "Resource ownership: Argo CD owns Git-tracked runtime overlays"
+else
+  block "Resource ownership check failed"
+  sed -n '1,40p' /tmp/packmate-preflight-own.txt || true
+fi
+
 printf '\n=== Summary ===\n'
 printf 'PASS=%s WARNING=%s BLOCKED=%s OPTIONAL_UNAVAILABLE=%s\n' "${PASS}" "${WARN}" "${BLOCK}" "${OPT}"
 if [[ "${BLOCK}" -gt 0 ]]; then

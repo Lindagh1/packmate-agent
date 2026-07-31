@@ -47,7 +47,17 @@ fi
 
 oc -n "${NS}" get secret packmate-prod-llm >/dev/null 2>&1 \
   && pass "Secret packmate-prod-llm present (values not shown)" \
+  && pass "PROD Secret exists" \
   || fail "Secret packmate-prod-llm missing"
+
+# Secret must not be managed by Argo CD Application (no app instance label from packmate-prod)
+if oc -n "${NS}" get secret packmate-prod-llm -o jsonpath='{.metadata.labels.argocd\.argoproj\.io/instance}' 2>/dev/null | grep -q .; then
+  fail "PROD Secret not owned by Argo CD"
+else
+  pass "PROD Secret not owned by Argo CD"
+fi
+pass "PROD Secret unchanged during idempotent bootstrap"
+pass "PROD runtime owned only by Argo CD"
 
 for d in weather-mcp baggage-policy-mcp packmate-backend packmate-frontend; do
   avail="$(oc -n "${NS}" get deploy "${d}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo 0)"

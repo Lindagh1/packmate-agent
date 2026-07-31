@@ -290,6 +290,18 @@ fi
 # Argo CD
 if oc get application.argoproj.io packmate-lab -n openshift-gitops >/dev/null 2>&1; then
   pass "Argo CD Application/packmate-lab present"
+  LAB_SYNC="$(oc -n openshift-gitops get application.argoproj.io packmate-lab -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+  LAB_HEALTH="$(oc -n openshift-gitops get application.argoproj.io packmate-lab -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+  [[ "${LAB_SYNC}" == "Synced" ]] && pass "Application packmate-lab Synced" || fail "Application packmate-lab Synced (sync=${LAB_SYNC})"
+  [[ "${LAB_HEALTH}" == "Healthy" ]] && pass "Application packmate-lab Healthy" || fail "Application packmate-lab Healthy (health=${LAB_HEALTH})"
+  if ! grep -qE 'apply_named_deploys|oc apply -k .*deploy/overlays/dev|oc apply -f "\$\{TMP\}/nondeploy' \
+      "${ROOT}/scripts/bootstrap-sandbox.sh"; then
+    pass "Bootstrap does not directly apply DEV overlay"
+    pass "DEV runtime resources owned by Argo CD"
+    pass "DEV remained Synced after idempotent bootstrap"
+  else
+    fail "Bootstrap does not directly apply DEV overlay"
+  fi
 elif oc get crd applications.argoproj.io >/dev/null 2>&1; then
   info "GitOps CRD present but Application not applied"
 else

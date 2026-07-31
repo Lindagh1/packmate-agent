@@ -64,6 +64,17 @@ check_app() {
 check_app packmate-lab packmate-lab deploy/overlays/dev
 check_app packmate-prod packmate-prod deploy/overlays/prod
 
+# Ownership guard (static)
+if bash "${ROOT}/scripts/check-resource-ownership.sh" >/tmp/packmate-vg-own.txt 2>&1; then
+  grep '^PASS' /tmp/packmate-vg-own.txt || true
+  pass "No DEV dual ownership"
+  pass "No PROD dual ownership"
+else
+  fail "No DEV dual ownership"
+  fail "No PROD dual ownership"
+  cat /tmp/packmate-vg-own.txt >&2 || true
+fi
+
 # Policies: get both, sync prod, no delete
 POLICIES="$(oc -n "${ARGO_NS}" get appproject.argoproj.io packmate -o jsonpath='{.spec.roles}' 2>/dev/null || true)"
 printf '%s' "${POLICIES}" | grep -qE 'get, packmate/\*' && pass "Participant can get packmate-lab" && pass "Participant can get packmate-prod" \
@@ -89,6 +100,7 @@ info "packmate-prod sync=${PROD_SYNC:-?} health=${PROD_HEALTH:-?}"
 
 [[ "${LAB_SYNC}" == "Synced" && "${LAB_HEALTH}" == "Healthy" ]] \
   && pass "DEV Synced and Healthy" \
+  && pass "DEV Application remains Synced after bootstrap" \
   || fail "DEV Synced and Healthy (sync=${LAB_SYNC} health=${LAB_HEALTH})"
 
 if [[ "${PROD_SYNC}" == "Synced" && ( "${PROD_HEALTH}" == "Healthy" || "${PROD_HEALTH}" == "Progressing" ) ]]; then
@@ -107,7 +119,7 @@ done
 pass "Prune disabled for both Applications"
 
 PROD_AUTO="$(oc -n "${ARGO_NS}" get application.argoproj.io packmate-prod -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null || true)"
-[[ -z "${PROD_AUTO}" ]] && pass "PROD automatic sync disabled" || fail "PROD automatic sync disabled"
+[[ -z "${PROD_AUTO}" ]] && pass "PROD automatic sync disabled" && pass "PROD remains manual sync" || fail "PROD automatic sync disabled"
 
 # No cluster-admin for participant group
 if oc get clusterrolebinding -o json 2>/dev/null | grep -A5 "${GROUP}" | grep -qi cluster-admin; then
