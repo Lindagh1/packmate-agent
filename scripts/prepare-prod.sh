@@ -25,6 +25,8 @@ cd "${ROOT}"
 if [[ -f "${ROOT}/scripts/lib/sandbox-common.sh" ]]; then
   source "${ROOT}/scripts/lib/sandbox-common.sh"
 fi
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/ensure-secret.sh"
 
 if declare -F packmate_log >/dev/null 2>&1; then
   log() { packmate_log "$*"; }
@@ -77,12 +79,12 @@ log "OK: labeled namespace/${PACKMATE_PROD_NAMESPACE} packmate.io/environment=pr
 LLM_KEY="${LITELLM_API_KEY:-${LLM_API_KEY:-}}"
 : "${LLM_KEY:?LITELLM_API_KEY (or LLM_API_KEY) must be set (never printed)}"
 
-oc -n "${PACKMATE_PROD_NAMESPACE}" create secret generic packmate-prod-llm \
-  --from-literal=BASE_URL="${LLM_BASE_URL}" \
-  --from-literal=MODEL="${LLM_MODEL}" \
-  --from-literal=LITELLM_API_KEY="${LLM_KEY}" \
-  --dry-run=client -o yaml | oc apply -f - >/dev/null
-log "OK: Secret/packmate-prod-llm applied in ${PACKMATE_PROD_NAMESPACE} (values not shown)"
+# Idempotent: create if missing; no-op if identical; refuse silent rotation.
+packmate_ensure_opaque_secret "${PACKMATE_PROD_NAMESPACE}" packmate-prod-llm \
+  "BASE_URL=${LLM_BASE_URL}" \
+  "MODEL=${LLM_MODEL}" \
+  "LITELLM_API_KEY=${LLM_KEY}" \
+  || die "packmate-prod-llm Secret preparation failed (set ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret to rotate intentionally)"
 unset LLM_KEY
 
 # ---------------------------------------------------------------------------

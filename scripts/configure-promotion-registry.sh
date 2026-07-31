@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 [[ -f "${ROOT}/config/sandbox.env" ]] && set -a && source "${ROOT}/config/sandbox.env" && set +a || true
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/ensure-secret.sh"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -39,12 +41,12 @@ if [[ -z "${TOKEN}" ]]; then
 fi
 [[ -n "${USER_NAME}" && -n "${TOKEN}" ]] || die "Username and token required"
 
-oc -n "${LAB_NS}" create secret docker-registry "${PACKMATE_PROMOTION_PUSH_SECRET}" \
-  --docker-server="${PACKMATE_PROMOTION_REGISTRY}" \
-  --docker-username="${USER_NAME}" \
-  --docker-password="${TOKEN}" \
-  --dry-run=client -o yaml | oc apply -f - >/dev/null
-log "OK: Secret/${PACKMATE_PROMOTION_PUSH_SECRET} in ${LAB_NS} (value not shown)"
+# Allow instructor reconfigure to update credentials when explicitly rotating.
+PACKMATE_SECRET_ALLOW_ROTATION="${PACKMATE_SECRET_ALLOW_ROTATION:-true}" \
+  packmate_ensure_docker_registry_secret \
+    "${LAB_NS}" "${PACKMATE_PROMOTION_PUSH_SECRET}" \
+    "${PACKMATE_PROMOTION_REGISTRY}" "${USER_NAME}" "${TOKEN}" \
+  || die "Failed to ensure push Secret"
 
 # Link to Pipeline SA — preserve unrelated imagePullSecrets
 oc -n "${LAB_NS}" secrets link "${PIPELINE_SA}" "${PACKMATE_PROMOTION_PUSH_SECRET}" --for=pull,mount >/dev/null 2>&1 \
@@ -61,11 +63,11 @@ CODE="$(curl -sI -o /dev/null -w '%{http_code}' -H 'Accept: application/vnd.oci.
 if [[ "${PUBLIC_OK}" == "true" ]]; then
   log "OK: package publicly pullable — PROD pull Secret optional"
 else
-  oc -n "${PROD_NS}" create secret docker-registry "${PACKMATE_PROMOTION_PULL_SECRET}" \
-    --docker-server="${PACKMATE_PROMOTION_REGISTRY}" \
-    --docker-username="${USER_NAME}" \
-    --docker-password="${TOKEN}" \
-    --dry-run=client -o yaml | oc apply -f - >/dev/null
+  PACKMATE_SECRET_ALLOW_ROTATION="${PACKMATE_SECRET_ALLOW_ROTATION:-true}" \
+    packmate_ensure_docker_registry_secret \
+      "${PROD_NS}" "${PACKMATE_PROMOTION_PULL_SECRET}" \
+      "${PACKMATE_PROMOTION_REGISTRY}" "${USER_NAME}" "${TOKEN}" \
+    || die "Failed to ensure pull Secret"
   for sa in packmate-backend packmate-frontend weather-mcp baggage-policy-mcp; do
     oc -n "${PROD_NS}" secrets link "${sa}" "${PACKMATE_PROMOTION_PULL_SECRET}" --for=pull >/dev/null 2>&1 || true
   done
