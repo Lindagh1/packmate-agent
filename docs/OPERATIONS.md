@@ -5,8 +5,10 @@
 | Target | Purpose |
 |--------|---------|
 | `make preflight` | Cluster/image checks |
-| `make bootstrap` | Idempotent DEV deploy from prebuilt images + PROD prep (no PROD workload apply) |
+| `make bootstrap` | Idempotent prerequisites + Argo CD reconciles DEV; PROD prep (no PROD workload apply/sync); Secrets no-op when unchanged |
 | `make prepare-prod` | Standalone, idempotent PROD prep (namespace, Secret, image-pull RBAC, Argo AppProject/Application) |
+| `make verify-resource-ownership` | Fail if bootstrap still dual-owns Git-tracked DEV/PROD runtime |
+| `make rotate-prod-llm-secret` | Instructor-only Secret rotation (`ROTATE_PACKMATE_PROD_LLM_SECRET=true`) |
 | `make configure-argocd-rbac` | Standalone: SSO `groups` scope, OpenShift group, AppProject `promoter` role |
 | `make verify` / `make verify-dev` | Non-destructive DEV readiness |
 | `make verify-prod` | Non-destructive PROD readiness (after an Argo CD Sync) |

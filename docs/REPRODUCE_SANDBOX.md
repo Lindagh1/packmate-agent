@@ -55,7 +55,9 @@ cp config/sandbox.env.example config/sandbox.env
 # In Workbench: clone into /opt/app-root/src/packmate-agent (not /opt/app-root/src itself)
 make setup-workbench-repository   # optional safe helper
 make preflight            # PASS/WARNING/BLOCKED (+ repo branch, RHOAI mirror lightweight)
-make bootstrap            # resolve digests → in-cluster deps → render/apply Pipeline → DEV + PROD prep
+make bootstrap            # prerequisites + Argo CD reconciles DEV; PROD prep (no overlay oc apply)
+make verify-resource-ownership
+make rotate-prod-llm-secret   # instructor only when intentional
 make verify-python-deps   # in-cluster install against the RHOAI 3.4 mirror (no public PyPI)
 make resolve-pipeline-python-image
 make render-pipeline      # writes .generated/tekton/packmate-ci.yaml (gitignored)

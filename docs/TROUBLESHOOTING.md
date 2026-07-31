@@ -178,6 +178,29 @@ oc -n packmate-prod get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"=
 git show packmate-v2:deploy/overlays/prod/kustomization.yaml | grep -A2 packmate-backend
 ```
 
+## Application packmate-lab becomes OutOfSync after bootstrap
+
+Root cause: bootstrap used to `oc apply` Git-tracked DEV runtime resources while
+Argo CD Application `packmate-lab` owns the same manifests (`deploy/overlays/dev`).
+That dual ownership is removed — bootstrap must **not** apply the DEV overlay.
+
+Fix: update to current `packmate-v2`, run `make verify-resource-ownership`, then
+`make bootstrap`. Do **not** paper over the issue with a manual Argo sync as the
+standing procedure. Bootstrap waits for Argo CD to reconcile DEV.
+
+## Secret resourceVersion changes on every bootstrap
+
+Root cause: `prepare-prod` / bootstrap re-applied Secrets with `oc apply` even
+when data was identical, bumping `resourceVersion`.
+
+Fix: current scripts create-if-missing and no-op when data matches. Ordinary
+bootstrap never rotates credentials. Instructor rotation only:
+
+```bash
+ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret
+```
+
+Do not repeatedly `oc apply` the Secret to “fix” anything.
 ## Argo CD shows "permission denied" / promoter role has no effect after RBAC setup
 
 Symptom: the instructor just ran `make configure-argocd-rbac` (or `CREATE_ARGOCD_RBAC=true`

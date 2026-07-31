@@ -12,9 +12,9 @@ Two namespaces on the same cluster:
 | Layer | Examples |
 |-------|----------|
 | Participant ClickOps | Data Science Project (DEV), Workbench, AI asset endpoints, Playground, Pipeline Start, promotion PR review/merge, Argo Sync (PROD) |
-| `make bootstrap` | DEV: MCP servers, FastAPI, frontend, Secrets, Routes, MCP registration, Tekton manifests. Also **prepares** PROD (namespace, Secret, image-pull RBAC, Argo AppProject/Application, SSO group) without deploying PROD workloads |
+| `make bootstrap` | Prerequisites only for Git-tracked runtime: Secrets (idempotent), custom model endpoint, MCP registration, Tekton Pipeline, AppProject/Applications. **Argo CD Application `packmate-lab` reconciles `deploy/overlays/dev`**. Also **prepares** PROD (namespace, Secret, image-pull RBAC, Applications) without deploying or syncing PROD workloads |
 | `scripts/promote-backend-image.sh` | Reads a Succeeded PipelineRun + PASS quality gate in DEV, edits **only** the backend digest in `deploy/overlays/prod/kustomization.yaml`, opens a pull request — never applies to the cluster |
-| Argo CD | Application `packmate-prod` (manual Sync, prune off, self-heal off) is the **only** thing that deploys to PROD |
+| Argo CD | Application `packmate-lab` (automated, prune off, selfHeal off) owns DEV runtime; Application `packmate-prod` (manual Sync, prune off, selfHeal off) is the **only** thing that deploys to PROD |
 | Platform prerequisites | OpenShift AI, Pipelines, OpenShift GitOps, shared Llama in `my-first-model`, prebuilt images |
 
 Playground = **model + system prompt + MCP**, DEV only.

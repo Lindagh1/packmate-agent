@@ -67,7 +67,7 @@ cp config/sandbox.env.example config/sandbox.env
 make setup-workbench-repository   # optional safe clone/update helper
 make configure-git                # optional; PACKMATE_GIT_NAME / PACKMATE_GIT_EMAIL
 make preflight              # cluster + repo + image + RHOAI mirror checks
-make bootstrap              # DEV workloads + resolve/render Pipeline + PROD prep
+make bootstrap              # Prerequisites + Argo CD reconciles DEV; PROD prep only
 make verify / verify-dev    # DEV readiness (incl. Python digest + deps)
 make verify-python-deps     # in-cluster install against the RHOAI 3.4 mirror
 make resolve-pipeline-python-image  # print current openshift/python:3.12-ubi9 digest ref
@@ -75,6 +75,8 @@ make render-pipeline        # render to .generated/tekton/packmate-ci.yaml (giti
 make validate-pipeline      # dry-run validate rendered Pipeline
 make prepare-prod           # re-run PROD prep standalone (idempotent)
 make configure-argocd-rbac  # SSO group + AppProject promoter role
+make verify-resource-ownership  # Fail on DEV/PROD dual ownership
+make rotate-prod-llm-secret # Instructor-only LLM Secret rotation
 make verify-prod            # PROD readiness after an Argo CD Sync
 make verify-gitops          # AppProject/Application/RBAC checks
 make validate-prod          # static PROD overlay checks (offline)
@@ -101,7 +103,10 @@ cd ../frontend && npm ci && npm run test -- --run
 - Do **not** redeploy the shared Llama model, in DEV or PROD
 - Do **not** commit Secrets or `config/sandbox.env`
 - Do **not** use image tag `latest`
+- Do **not** `oc apply -k deploy/overlays/dev` or `deploy/overlays/prod` — Argo CD owns Git-tracked runtime resources
 - Do **not** `oc apply -k deploy/overlays/prod` directly — Argo CD Sync only
+- Ordinary `make bootstrap` never rotates Secrets; use `ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret` when intentional
+- A bootstrap rerun must leave `packmate-lab` Synced/Healthy and must not bump Secret resourceVersions when data is unchanged
 - Do **not** push promotion/rollback branches straight to `packmate-v2` — pull request only
 - GitOps / Rollouts / EvalHub are required for the PROD modules; Rollouts / EvalHub stay optional extensions
 

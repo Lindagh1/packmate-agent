@@ -53,12 +53,12 @@ Bootstrap accepts **Quay or GHCR**; it does not hard-code a registry. Both DEV (
 
 ## Preparing `packmate-prod` (what participants trigger, what you can also run standalone)
 
-`make bootstrap` runs `scripts/prepare-prod.sh` automatically whenever `CREATE_PROD_NAMESPACE=true` or `CREATE_ARGOCD_APPLICATION=true` (both default `true`). It is **idempotent** and safe to re-run. It never deploys PROD workloads (no `oc apply -k deploy/overlays/prod`); Argo CD Sync is the only thing that ever creates PROD Deployments.
+`make bootstrap` runs `scripts/prepare-prod.sh` automatically whenever `CREATE_PROD_NAMESPACE=true` or `CREATE_ARGOCD_APPLICATION=true` (both default `true`). It is **idempotent** and safe to re-run. It never deploys PROD workloads (no `oc apply -k deploy/overlays/prod`); Argo CD Sync is the only thing that ever creates PROD Deployments. It also never `oc apply`s `deploy/overlays/dev` — Application `packmate-lab` owns DEV runtime. Secrets are create-if-missing / no-op-if-identical; rotation requires `ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret`.
 
 `prepare-prod.sh` does, in order:
 
 1. Creates namespace `packmate-prod`, labeled `packmate.io/environment=prod` (deliberately **not** the DSP labels `opendatahub.io/dashboard` / `modelmesh-enabled` — PROD must never look like a Data Science Project; `scripts/verify-prod.sh` checks this).
-2. Creates **Secret `packmate-prod-llm`** from `LLM_BASE_URL` / `LLM_MODEL` / `LITELLM_API_KEY` (or `LLM_API_KEY`) — values never printed, never in Git. It reuses the same LLM connection values as DEV's `packmate-llm` Secret unless you override them.
+2. Ensures **Secret `packmate-prod-llm`** from `LLM_BASE_URL` / `LLM_MODEL` / `LITELLM_API_KEY` (or `LLM_API_KEY`) — values never printed, never in Git. Creates only when missing; no-ops when data is identical (preserves `resourceVersion`). Ordinary bootstrap never rotates it.
 3. Grants `system:image-puller` in `packmate-lab` to the `packmate-prod` ServiceAccounts (`packmate-backend`, `packmate-frontend`, `weather-mcp`, `baggage-policy-mcp`) so PROD can pull the same internal-registry images if you ever point an overlay there (the shipped overlay uses GHCR, so this is a safety net, not a hard requirement).
 4. Applies the Argo CD **AppProject `packmate`** and **Application `packmate-prod`** (manual Sync, `prune=false`, `selfHeal=false`, destination `packmate-prod` only — no wildcards).
 5. Labels `packmate-prod` with `argocd.argoproj.io/managed-by=openshift-gitops` (the official OpenShift GitOps 1.x managed-namespace mechanism) so the Argo CD application-controller ServiceAccount gets namespace RBAC automatically, without a hand-written RoleBinding.

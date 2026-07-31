@@ -28,7 +28,7 @@ It separates discovery, prototyping, delivery, and runtime into clear layers:
    You create a **Data Science Project** and a **code-server Workbench** in `packmate-lab`. You explore **AI asset endpoints**, prototype in the **Gen AI Playground**, then compare the export with the FastAPI service.
 
 3. **The lab bootstrap (prebuilt images)**
-   Automation (`make bootstrap`) deploys Weather MCP, Baggage MCP, backend, and frontend in `packmate-lab` from **digest-pinned** images (GHCR/Quay). It also registers the MCP servers, creates the **Packmate custom model endpoint** in your project, installs Pipeline `packmate-ci`, and **prepares `packmate-prod`** (namespace, Secret, image-pull RBAC, Argo CD AppProject/Application) — without deploying any PROD workload. You do **not** build four images at the start of the lab and you do **not** redeploy the shared Llama model in `my-first-model`.
+   Automation (`make bootstrap`) prepares Secrets, the **Packmate custom model endpoint**, MCP registration, and Pipeline `packmate-ci`. **Argo CD Application `packmate-lab`** reconciles Weather MCP, Baggage MCP, backend, and frontend in `packmate-lab` from Git (`deploy/overlays/dev`). Bootstrap also **prepares `packmate-prod`** (namespace, Secret, image-pull RBAC, Argo CD AppProject/Application) — without deploying or syncing any PROD workload. You do **not** build four images at the start of the lab and you do **not** redeploy the shared Llama model in `my-first-model`.
 
 4. **CI and promotion (Pipelines + pull request)**
    You start Pipeline `packmate-ci` from the UI (tests + AI quality gate + backend build). A passing run produces a **candidate backend digest**. Promoting that digest to PROD is a **Git pull request**, never a direct cluster change.
@@ -204,7 +204,7 @@ Participants create the project themselves so the OpenShift AI dashboard ownersh
 
 ### A.4. Clone and bootstrap
 
-Bootstrap verifies the cluster, deploys the two MCP servers, backend, and frontend in `packmate-lab`, registers MCP endpoints, installs Pipeline `packmate-ci`, **prepares `packmate-prod`** (namespace, Secret, image-pull RBAC, Argo CD AppProject/Application, your Argo CD group), and prints remaining UI steps. It never rebuilds four images at lab start and never deploys workloads into `packmate-prod`.
+Bootstrap verifies the cluster and GitOps, prepares Secrets (without rotating them), creates the custom model endpoint, installs Pipeline `packmate-ci`, applies AppProject/Applications, **waits for Argo CD to Sync `packmate-lab`**, registers MCP endpoints, and **prepares `packmate-prod`**. It never rebuilds four images at lab start, never `oc apply`s `deploy/overlays/dev` or `prod`, and never deploys workloads into `packmate-prod`. A second `make bootstrap` must leave DEV Synced/Healthy and must not change Secret resourceVersions when data is unchanged.
 
 ```bash
 cd /opt/app-root/src

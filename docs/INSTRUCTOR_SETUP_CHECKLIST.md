@@ -47,7 +47,9 @@ Use before each Packmate v2 (DEV → PROD) session.
 ## Smoke on instructor project
 
 - [ ] `make preflight` → no BLOCKED
-- [ ] `SKIP_CONFIRM=true make bootstrap` → DEV workloads healthy **and** `=== prepare-prod complete ===` printed
+- [ ] `SKIP_CONFIRM=true make bootstrap` → DEV Synced/Healthy via Argo CD **and** `=== prepare-prod complete ===` printed
+- [ ] Second `make bootstrap` leaves `packmate-lab` Synced/Healthy (no manual Argo sync) and `packmate-prod-llm` resourceVersion unchanged
+- [ ] `make verify-resource-ownership` passes
 - [ ] `make verify` → OK (DEV)
 - [ ] Playground in `packmate-lab` shows Packmate Llama 3.2 3B + both MCP after bootstrap
 - [ ] Both MCP tools authorize
