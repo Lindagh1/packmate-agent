@@ -35,12 +35,15 @@ cd "${ROOT}"
 
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/lib/fork-safety.sh"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/prod-backend-overlay.sh"
 packmate_load_fork_config "${ROOT}"
 
 OVERLAY_REL="deploy/overlays/prod/kustomization.yaml"
 OVERLAY="${ROOT}/${OVERLAY_REL}"
 TARGET_IMAGE_KEY="quay.io/example/packmate-backend"
 BASE_BRANCH="${PROMOTION_BASE_BRANCH:-packmate-v2}"
+ALLOW_MANUAL_PROMOTION_COMPLETION="${ALLOW_MANUAL_PROMOTION_COMPLETION:-false}"
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
@@ -268,49 +271,73 @@ PY
 # Edit deploy/overlays/prod/kustomization.yaml — packmate-backend image entry
 # ONLY (newName + digest). Never touches other images or dev overlay.
 edit_prod_overlay() {
-  local path="$1" image_name="$2" digest="$3"
-  python3 - "${path}" "${image_name}" "${digest}" "${TARGET_IMAGE_KEY}" <<'PY'
-import re
-import sys
-from pathlib import Path
+  packmate_set_prod_backend_ref "$1" "$2" "$3"
+}
 
-path, image_name, digest, target_key = sys.argv[1:5]
-p = Path(path)
-text = p.read_text()
+block_no_promotion_diff() {
+  local current="$1" candidate="$2"
+  printf 'BLOCKED_NO_PROMOTION_DIFF\n' >&2
+  cat >&2 <<EOF
+DETAIL  PROD already uses candidate ${candidate}
+DETAIL  current PROD digest=${current}
+ACTION  Prepare the disposable fork/demo branch with the known-good baseline
+        before starting the Pipeline exercise.
+ACTION  make verify-demo-baseline
+ACTION  CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline
+EOF
+  exit 1
+}
 
-# Bound the backend image entry between its own "- name:" line and the next
-# list item at the same indent / next top-level key, so only this real (not
-# commented-out) block is ever touched. Anchored to line-start so commented
-# example lines such as "#   - name: ...digest: sha256:0123..." never match.
-block_re = re.compile(
-    r"^(?P<indent>[ \t]*)- name: " + re.escape(target_key) + r"[ \t]*\n"
-    r"(?P<block>.*?)(?=^(?P=indent)- name:|^[^\s#]|\Z)",
-    re.DOTALL | re.MULTILINE,
-)
-matches = list(block_re.finditer(text))
-if not matches:
-    sys.exit(f"ERROR: image entry '{target_key}' not found in {path}")
-if len(matches) > 1:
-    sys.exit(f"ERROR: image entry '{target_key}' matched {len(matches)} times in {path} (expected 1)")
-m = matches[0]
-
-block = m.group("block")
-new_block, n_name = re.subn(
-    r"(newName: )\S+", lambda mo: mo.group(1) + image_name, block, count=1
-)
-new_block, n_digest = re.subn(
-    r"(digest: )sha256:[0-9a-f]+", lambda mo: mo.group(1) + digest, new_block, count=1
-)
-if n_name != 1 or n_digest != 1:
-    sys.exit(
-        f"ERROR: expected exactly one newName/digest replacement in {path} "
-        f"(newName matches={n_name}, digest matches={n_digest})"
-    )
-
-text = text[: m.start("block")] + new_block + text[m.end("block"):]
-p.write_text(text)
-print(f"Updated {path}: {target_key} -> newName={image_name} digest={digest}")
-PY
+assert_github_write_ready_or_manual() {
+  if [[ "${ALLOW_MANUAL_PROMOTION_COMPLETION}" == "true" ]]; then
+    warn "ALLOW_MANUAL_PROMOTION_COMPLETION=true — skipping authenticated push pre-check"
+    return 0
+  fi
+  local origin_url probe_log
+  origin_url="$(packmate_remote_url origin)"
+  # Fail early on known broken VS Code askpass before creating a promote branch
+  if [[ -n "${GIT_ASKPASS:-}" ]] && { [[ "${GIT_ASKPASS}" == *".cursor-server"* ]] || [[ "${GIT_ASKPASS}" == *"askpass"* ]]; }; then
+    if [[ -n "${VSCODE_GIT_IPC_HANDLE:-}" ]]; then
+      warn "VS Code/Cursor askpass detected — HTTPS git push often fails with ECONNREFUSED"
+      warn "Unset GIT_ASKPASS SSH_ASKPASS in a system terminal, or set ALLOW_MANUAL_PROMOTION_COMPLETION=true"
+    fi
+  fi
+  # Prefer gh API permission when available
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    local fork_repo perm
+    fork_repo="$(packmate_normalize_github_owner_repo "$(packmate_writable_repo_url)")"
+    perm="$(gh api "repos/${fork_repo}" --jq '.permissions.push // .permissions.admin // false' 2>/dev/null || true)"
+    if [[ "${perm}" == "true" ]]; then
+      log "OK: authenticated GitHub write permission verified via API"
+      return 0
+    fi
+  fi
+  # Lightweight dry-run: does not create a lasting remote ref
+  probe_log="$(mktemp)"
+  if git push --dry-run origin "HEAD:refs/heads/packmate-write-probe-dryrun" \
+      >"${probe_log}" 2>&1; then
+    rm -f "${probe_log}"
+    log "OK: git push --dry-run to fork succeeded"
+    return 0
+  fi
+  if grep -qiE 'ECONNREFUSED|askpass|403|Authentication failed|could not read Username' "${probe_log}"; then
+    printf 'BLOCKED_GITHUB_WRITE_UNAVAILABLE\n' >&2
+    warn "Authenticated push to the fork is not available (see dry-run log excerpt)"
+    sed -n '1,12p' "${probe_log}" >&2 || true
+    rm -f "${probe_log}"
+    cat >&2 <<'EOF'
+ACTION  make verify-github-write-readiness
+ACTION  Supported options (never store tokens in Git or sandbox.env):
+        A) Fine-grained GitHub token at the interactive HTTPS password prompt
+        B) Organization-approved git credential helper (user-configured)
+        C) SSH remote when a valid SSH key is already available
+ACTION  Or set ALLOW_MANUAL_PROMOTION_COMPLETION=true to create the branch locally
+        and finish push/PR in a browser/terminal yourself
+EOF
+    exit 1
+  fi
+  rm -f "${probe_log}"
+  warn "Could not positively verify push auth — continuing; push may still fail"
 }
 
 github_compare_url() {
@@ -445,6 +472,40 @@ if is_non_portable_ref "${IMAGE_REFERENCE}"; then
   verify_image_exists "${NAMESPACE}" "${DIGEST}"
 fi
 
+# Early no-diff check — BEFORE confirm / branch / file edits
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+CURRENT_PROD_REF=""
+CURRENT_PROD_DIGEST=""
+if CURRENT_PROD_REF="$(packmate_read_prod_backend_ref "${OVERLAY}")"; then
+  CURRENT_PROD_DIGEST="$(packmate_normalize_digest "${CURRENT_PROD_REF##*@}")"
+  log "current PROD backend=${CURRENT_PROD_REF}"
+  if [[ "${CURRENT_PROD_DIGEST}" == "${DIGEST}" ]]; then
+    block_no_promotion_diff "${CURRENT_PROD_DIGEST}" "${DIGEST}"
+  fi
+else
+  die "could not read current PROD backend digest from ${OVERLAY_REL}"
+fi
+
+if git show-ref --verify --quiet "refs/heads/${BASE_BRANCH}" \
+  || git show-ref --verify --quiet "refs/remotes/origin/${BASE_BRANCH}"; then
+  base_blob="$(git show "${BASE_BRANCH}:${OVERLAY_REL}" 2>/dev/null \
+    || git show "origin/${BASE_BRANCH}:${OVERLAY_REL}" 2>/dev/null || true)"
+  if [[ -n "${base_blob}" ]]; then
+    base_digest="$(printf '%s' "${base_blob}" | python3 -c '
+import re,sys
+t=sys.stdin.read()
+m=re.search(r"- name: quay\.io/example/packmate-backend\n(?:.*\n)*?digest:\s*(sha256:[0-9a-f]+)", t)
+print(m.group(1) if m else "")
+')"
+    if [[ -n "${base_digest}" ]]; then
+      base_digest="$(normalize_digest "${base_digest}")"
+      if [[ "${base_digest}" == "${DIGEST}" ]]; then
+        block_no_promotion_diff "${base_digest}" "${DIGEST}"
+      fi
+    fi
+  fi
+fi
+
 if [[ "${PROMO_KIND}" == "legacy" ]]; then
   echo
   echo "Will update ${OVERLAY_REL} (PRODUCTION overlay ONLY):"
@@ -458,20 +519,21 @@ fi
 # Fork safety (before branch / commit / push / PR)
 # ---------------------------------------------------------------------------
 assert_fork_promotion_safe
+assert_github_write_ready_or_manual
 
 # ---------------------------------------------------------------------------
 # Branch, edit, diff, commit
 # ---------------------------------------------------------------------------
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "${CURRENT_BRANCH}" != "${BASE_BRANCH}" ]]; then
   warn "current branch is '${CURRENT_BRANCH}', expected '${BASE_BRANCH}' — branching from HEAD anyway"
 fi
 
+# Refuse to reuse a stale promote branch name
 if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
-  git checkout "${BRANCH}"
-else
-  git checkout -b "${BRANCH}"
+  die "Local branch ${BRANCH} already exists — delete it only if unused: git branch -D ${BRANCH}"
 fi
+
+git checkout -b "${BRANCH}"
 
 edit_prod_overlay "${OVERLAY}" "${IMAGE_NAME}" "${DIGEST}"
 
@@ -482,12 +544,22 @@ echo "--- end diff ---"
 echo
 
 if git diff --quiet -- "${OVERLAY_REL}" && git diff --cached --quiet -- "${OVERLAY_REL}"; then
-  log "No changes to ${OVERLAY_REL} — production already pinned to ${DIGEST}. Nothing to promote."
+  # Should be unreachable after the early check; clean up defensively.
+  printf 'BLOCKED_NO_PROMOTION_DIFF\n' >&2
+  warn "No changes after edit — cleaning up empty promote branch"
   git checkout "${CURRENT_BRANCH}" >/dev/null 2>&1 || true
-  if [[ "${CURRENT_BRANCH}" != "${BRANCH}" ]] && git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
-    git branch -d "${BRANCH}" >/dev/null 2>&1 || true
-  fi
-  exit 0
+  git branch -D "${BRANCH}" >/dev/null 2>&1 || true
+  block_no_promotion_diff "${DIGEST}" "${DIGEST}"
+fi
+
+# Guard: only the PROD overlay may be staged
+mapfile -t dirty_names < <(git diff --name-only)
+if [[ "${#dirty_names[@]}" -ne 1 || "${dirty_names[0]}" != "${OVERLAY_REL}" ]]; then
+  warn "unexpected dirty files: ${dirty_names[*]-none}"
+  git checkout -- "${OVERLAY_REL}" >/dev/null 2>&1 || true
+  git checkout "${CURRENT_BRANCH}" >/dev/null 2>&1 || true
+  git branch -D "${BRANCH}" >/dev/null 2>&1 || true
+  die "Promotion would change unexpected files — aborted and restored ${CURRENT_BRANCH}"
 fi
 
 git add "${OVERLAY_REL}"

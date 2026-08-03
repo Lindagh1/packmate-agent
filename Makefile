@@ -10,7 +10,8 @@ SHELL := /bin/bash
 	check-gitops-prerequisites install-gitops-operator wait-for-gitops instructor-setup \
 	configure-promotion-registry verify-promotion-registry \
 	verify-resource-ownership rotate-prod-llm-secret verify-demo-fork \
-	verify-demo-fork-live verify-github-write-readiness discover-packmate-resources \
+	verify-demo-fork-live verify-github-write-readiness verify-demo-baseline \
+	prepare-demo-baseline discover-packmate-resources \
 	reset-lab acceptance-static acceptance-prebootstrap acceptance-postbootstrap \
 	diagnose-latest-pipelinerun
 
@@ -36,6 +37,8 @@ help:
 	@echo "  make verify-demo-fork       Pre-bootstrap fork remotes/config (Argo INFO only)"
 	@echo "  make verify-demo-fork-live  Post-bootstrap: Applications must follow the fork"
 	@echo "  make verify-github-write-readiness  GitHub read vs write readiness"
+	@echo "  make verify-demo-baseline   Read-only: PROD digest vs Pipeline candidate"
+	@echo "  make prepare-demo-baseline  Reset disposable fork/demo PROD baseline (needs CONFIRM_…)"
 	@echo "  make discover-packmate-resources  Read-only residue discovery"
 	@echo "  make reset-lab              Dry-run Packmate reset (needs CONFIRM_… to delete)"
 	@echo "  make acceptance-static      Offline clean-room acceptance"
@@ -82,6 +85,12 @@ verify-demo-fork-live:
 
 verify-github-write-readiness:
 	@bash "$(ROOT)/scripts/verify-github-write-readiness.sh"
+
+verify-demo-baseline:
+	@bash "$(ROOT)/scripts/verify-demo-baseline.sh"
+
+prepare-demo-baseline:
+	@bash "$(ROOT)/scripts/prepare-demo-baseline.sh"
 
 discover-packmate-resources:
 	@bash "$(ROOT)/scripts/discover-packmate-resources.sh"
@@ -145,7 +154,8 @@ test:
 	bash "$(ROOT)/scripts/tests/test-bootstrap-ownership-secrets.sh"; \
 	bash "$(ROOT)/scripts/tests/test-kustomize-replicas-recovery.sh"; \
 	bash "$(ROOT)/scripts/tests/test-fork-first-workshop.sh"; \
-	bash "$(ROOT)/scripts/tests/test-deep-audit-hardening.sh"
+	bash "$(ROOT)/scripts/tests/test-deep-audit-hardening.sh"; \
+	bash "$(ROOT)/scripts/tests/test-repeatable-demo-baseline.sh"
 
 render:
 	@bash "$(ROOT)/scripts/render-manifests.sh"

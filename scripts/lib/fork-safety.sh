@@ -46,11 +46,25 @@ packmate_github_https_url() {
 packmate_load_fork_config() {
   local root="${1:-}"
   if [[ -n "${root}" && -f "${root}/config/sandbox.env" ]]; then
+    # Exported environment wins over sandbox.env (tests + one-shot instructor overrides).
+    local _packmate_env_tmp
+    _packmate_env_tmp="$(mktemp)"
+    # shellcheck disable=SC2016
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+      [[ "${line}" =~ ^[[:space:]]*$ ]] && continue
+      [[ "${line}" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+      local key="${BASH_REMATCH[1]}"
+      if [[ -z "${!key+x}" ]]; then
+        printf '%s\n' "${line}" >>"${_packmate_env_tmp}"
+      fi
+    done <"${root}/config/sandbox.env"
     # shellcheck disable=SC1090
     set -a
     # shellcheck disable=SC1091
-    source "${root}/config/sandbox.env"
+    source "${_packmate_env_tmp}"
     set +a
+    rm -f "${_packmate_env_tmp}"
   fi
   CANONICAL_GIT_REPO_URL="${CANONICAL_GIT_REPO_URL:-${PACKMATE_CANONICAL_GIT_REPO_URL_DEFAULT}}"
   GIT_REPO_URL="${GIT_REPO_URL:-}"
