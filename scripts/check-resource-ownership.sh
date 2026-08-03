@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Fail if bootstrap scripts still directly apply Git-tracked DEV/PROD runtime resources.
+# Renders both overlays first; never emits an unhandled Python traceback on Kustomize failure.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,12 +12,33 @@ FAILS=0
 
 log() { printf '%s\n' "$*"; }
 
-render_names() {
+# Render overlay to a temp file. Prints PASS/FAIL. Sets RENDER_OUT path on success.
+RENDER_OUT=""
+render_overlay() {
   local overlay="$1"
-  python3 - <<PY
-import subprocess, yaml
-out = subprocess.check_output(["oc", "kustomize", "deploy/overlays/${overlay}"], text=True)
-for d in yaml.safe_load_all(out):
+  local out err label
+  out="$(mktemp)"
+  err="$(mktemp)"
+  label="$(printf '%s' "${overlay}" | tr '[:lower:]' '[:upper:]')"
+  if ! oc kustomize "deploy/overlays/${overlay}" >"${out}" 2>"${err}"; then
+    fail "Unable to render deploy/overlays/${overlay}"
+    printf 'DETAIL %s\n' "$(tr '\n' ' ' <"${err}" | sed 's/[[:space:]]\+/ /g' | cut -c1-400)" >&2
+    printf 'ACTION Fix the overlay before running bootstrap\n' >&2
+    rm -f "${out}" "${err}"
+    RENDER_OUT=""
+    return 1
+  fi
+  pass "${label} overlay renders successfully"
+  rm -f "${err}"
+  RENDER_OUT="${out}"
+  return 0
+}
+
+inventory() {
+  local path="$1"
+  python3 - "${path}" <<'PY'
+import sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1])):
   if not d:
     continue
   kind = d.get("kind")
@@ -28,13 +50,39 @@ PY
 
 log "=== Packmate resource ownership check ==="
 
-DEV_RES="$(render_names dev)"
-PROD_RES="$(render_names prod)"
+DEV_OK=0
+PROD_OK=0
+DEV_FILE=""
+PROD_FILE=""
 
 log "DEV overlay resources:"
-printf '%s\n' "${DEV_RES}" | sed 's/^/  - /'
+if render_overlay dev; then
+  DEV_OK=1
+  DEV_FILE="${RENDER_OUT}"
+  inventory "${DEV_FILE}" | sed 's/^/  - /'
+else
+  :
+fi
+
 log "PROD overlay resources:"
-printf '%s\n' "${PROD_RES}" | sed 's/^/  - /'
+if render_overlay prod; then
+  PROD_OK=1
+  PROD_FILE="${RENDER_OUT}"
+  inventory "${PROD_FILE}" | sed 's/^/  - /'
+else
+  :
+fi
+
+cleanup_tmp() {
+  [[ -n "${DEV_FILE}" ]] && rm -f "${DEV_FILE}" || true
+  [[ -n "${PROD_FILE}" ]] && rm -f "${PROD_FILE}" || true
+}
+trap cleanup_tmp EXIT
+
+if [[ "${DEV_OK}" -ne 1 || "${PROD_OK}" -ne 1 ]]; then
+  log "verify-resource-ownership: overlay render failed — skipping dual-ownership analysis"
+  exit 1
+fi
 
 # Forbidden active bootstrap patterns
 if grep -nE '^\s*apply_named_deploys|^\s*oc apply -k .*deploy/overlays/dev|^\s*oc kustomize .*/deploy/overlays/dev|\$\{TMP\}/nondeploy\.yaml|oc set image deploy/' \
