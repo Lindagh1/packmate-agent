@@ -4,7 +4,11 @@
 
 | Target | Purpose |
 |--------|---------|
-| `make verify-demo-fork` | Confirm origin / `GIT_REPO_URL` are a fork (not canonical upstream) |
+| `make verify-demo-fork` | Pre-bootstrap: fork remotes/config (Argo migration is INFO only) |
+| `make verify-demo-fork-live` | Post-bootstrap: Applications must follow the fork |
+| `make verify-github-write-readiness` | Distinguish read access vs authenticated write (no tokens printed) |
+| `make discover-packmate-resources` | Read-only residue discovery (STALE_PACKMATE classification) |
+| `make reset-lab` | Dry-run Packmate reset; destructive needs `CONFIRM_PACKMATE_RESET=packmate-lab-and-prod` |
 | `make preflight` | Cluster/image checks |
 | `make bootstrap` | Idempotent prerequisites + Argo CD reconciles DEV; PROD prep (no PROD workload apply/sync); Secrets no-op when unchanged |
 | `make prepare-prod` | Standalone, idempotent PROD prep (namespace, Secret, image-pull RBAC, Argo AppProject/Application) |

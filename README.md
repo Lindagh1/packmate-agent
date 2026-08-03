@@ -82,7 +82,8 @@ flowchart TB
 cp config/sandbox.env.example config/sandbox.env
 # set GIT_REPO_URL to YOUR fork; digest-pinned *_IMAGE and LLM_* from instructor
 # Workbench: clone the fork into /opt/app-root/src/packmate-agent (never treat /opt/app-root/src as the repo)
-make verify-demo-fork       # origin / GIT_REPO_URL must be a fork
+make verify-demo-fork       # Pre-bootstrap: origin/GIT_REPO_URL must be a fork (Argo INFO only)
+make verify-github-write-readiness  # Read vs write GitHub access; detects VS Code askpass issues
 make setup-workbench-repository   # optional safe clone/update helper (requires fork URL)
 make configure-git                # optional; PACKMATE_GIT_NAME / PACKMATE_GIT_EMAIL
 make preflight              # cluster + repo + image + RHOAI mirror checks
@@ -127,8 +128,9 @@ cd ../frontend && npm ci && npm run test -- --run
 - Ordinary `make bootstrap` never rotates Secrets; use `ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret` when intentional
 - A bootstrap rerun must leave `packmate-lab` Synced/Healthy and must not bump Secret resourceVersions when data is unchanged
 - Do **not** push promotion/rollback branches straight to `packmate-v2` — pull request only
-- Do **not** promote into Lindagh1/packmate-agent — use a fork (`make verify-demo-fork`)
+- Do **not** promote into Lindagh1/packmate-agent — use a fork (`make verify-demo-fork` before bootstrap; `make verify-demo-fork-live` after)
 - Do **not** create a `lab-v2.x` tag or GitHub Release per demonstration
+- After deleting projects, run `make discover-packmate-resources` — Applications/AppProject/group may remain; dry-run `make reset-lab` before a clean room
 - GitOps / Rollouts / EvalHub are required for the PROD modules; Rollouts / EvalHub stay optional extensions
 
 ## License

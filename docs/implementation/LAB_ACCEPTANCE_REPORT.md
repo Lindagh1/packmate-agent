@@ -237,3 +237,16 @@ The participant guide was restructured into Modules A–F (OpenShift AI, Develop
 | Argo CD | Applications use `__GIT_REPO_URL__` / `__GIT_REVISION__` (fork), not hard-coded canonical |
 | Release policy | One canonical `lab-v2.0.0`; no release per demonstration |
 | Tests | `scripts/tests/test-fork-first-workshop.sh` |
+
+## Addendum — Clean-room deep audit hardening
+
+| Item | Result |
+|------|--------|
+| Pre-bootstrap fork check | `make verify-demo-fork` — Argo upstream residue = INFO/ACTION |
+| Post-bootstrap fork check | `make verify-demo-fork-live` wired into `make verify-gitops` |
+| GitHub write readiness | `make verify-github-write-readiness` (askpass / ECONNREFUSED guidance) |
+| Residue discovery | `make discover-packmate-resources` (read-only classifications) |
+| Safe reset | `make reset-lab` dry-run; destructive needs `CONFIRM_PACKMATE_RESET=packmate-lab-and-prod` |
+| Acceptance | `make acceptance-static` / `acceptance-prebootstrap` / `acceptance-postbootstrap` |
+| Tests | `scripts/tests/test-deep-audit-hardening.sh` |
+| Patch release | Required after this hardening lands on `packmate-v2` beyond `lab-v2.0.0` (do not create yet) |

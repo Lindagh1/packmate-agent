@@ -91,11 +91,14 @@ make cleanup                # interactive, DEV (packmate-lab) only
 6. Clone **the fork** into `/opt/app-root/src/packmate-agent`; add canonical as `upstream`.
 7. Configure `config/sandbox.env` with `GIT_REPO_URL` = fork URL.
 8. Run `make verify-demo-fork`.
-9. Run `make preflight`.
-10. Run `make bootstrap`.
-11. Run `make verify-dev`.
-12. Start Pipeline `packmate-ci` with VolumeClaimTemplate **2 GiB**.
-13. Promote via PR **in the fork**; Sync `packmate-prod` manually.
+9. Run `make verify-github-write-readiness` (Module D prep).
+10. Run `make preflight`.
+11. Run `make bootstrap`.
+12. Run `make verify-dev`.
+13. Run `make verify-demo-fork-live` and `make verify-gitops`.
+14. Start Pipeline `packmate-ci` with VolumeClaimTemplate **2 GiB** (git-url = fork).
+15. Promote via PR **in the fork**; Sync `packmate-prod` manually.
+16. For a clean room after project deletion: `make discover-packmate-resources` then dry-run `make reset-lab`.
 
 ### Why the Pipeline Python digest is not in Git
 

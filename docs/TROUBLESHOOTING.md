@@ -65,6 +65,28 @@ make verify-demo-fork
 
 If promote/rollback prints `BLOCKED_CANONICAL_REPOSITORY_PROMOTION`, fix `origin` / `GIT_REPO_URL` to your fork.
 
+### Pre-bootstrap vs post-bootstrap fork checks
+
+`make verify-demo-fork` must pass before bootstrap. If Applications still point at Lindagh1/packmate-agent, that is **INFO/ACTION**, not failure — bootstrap migrates them.
+
+After bootstrap, `make verify-demo-fork-live` (also invoked by `make verify-gitops`) **fails** if Applications still point upstream.
+
+### Projects deleted but Argo residue remains
+
+```bash
+make discover-packmate-resources
+make reset-lab   # dry-run
+# CONFIRM_PACKMATE_RESET=packmate-lab-and-prod make reset-lab
+```
+
+### Git push askpass ECONNREFUSED (VS Code / Cursor)
+
+```bash
+unset GIT_ASKPASS SSH_ASKPASS VSCODE_GIT_ASKPASS_NODE VSCODE_GIT_IPC_HANDLE
+make verify-github-write-readiness
+gh auth login -h github.com -p https -w
+```
+
 Or: `./scripts/setup-workbench-repository.sh` from an existing clone helper path. Do **not** delete files already present in `/opt/app-root/src`.
 
 ## Workbench — target directory exists without `.git`

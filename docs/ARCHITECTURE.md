@@ -8,6 +8,9 @@
 | Participant fork | Writable Git history for Pipeline clones, promotion PRs, rollback PRs |
 | Argo CD | `Application/packmate-lab` and `Application/packmate-prod` use `GIT_REPO_URL` + `GIT_REVISION` from the fork |
 | Release policy | New `lab-v2.x` only when the workshop itself changes — not per demo |
+| Pre-bootstrap check | `make verify-demo-fork` — Argo upstream residue is INFO until bootstrap migrates |
+| Post-bootstrap check | `make verify-demo-fork-live` — Applications must follow fork; DEV Synced/Healthy |
+| Residue / reset | `make discover-packmate-resources` + dry-run `make reset-lab` |
 
 Validated technical workflow:
 

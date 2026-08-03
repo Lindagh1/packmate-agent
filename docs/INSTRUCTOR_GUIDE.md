@@ -41,6 +41,26 @@ Create a new `lab-v2.x` tag only when the **canonical workshop itself** changes 
 
 `ALLOW_CANONICAL_REPO_PROMOTION=true` is an instructor-only override. Never enable it in `config/sandbox.env.example` or participant docs.
 
+### Clean-room residue and reset
+
+Participants may delete Data Science Projects without removing Argo Applications. Before the next class:
+
+```bash
+make discover-packmate-resources   # read-only
+make reset-lab                     # dry-run allowlisted plan
+# Destructive only when intentional:
+CONFIRM_PACKMATE_RESET=packmate-lab-and-prod make reset-lab
+```
+
+Never deletes `my-first-model`, Operators, or the shared GitOps instance. Stuck `Terminating` namespaces are reported; finalizers are never removed automatically.
+
+### Pre-bootstrap vs post-bootstrap fork checks
+
+| Target | When | Argo Applications |
+|--------|------|-------------------|
+| `make verify-demo-fork` | Before bootstrap | INFO/ACTION if still pointing upstream |
+| `make verify-demo-fork-live` | After bootstrap | Must follow fork; DEV Synced/Healthy; PROD manual |
+
 ## Two environments, one cluster
 
 | Environment | Namespace | Created by | Contains |

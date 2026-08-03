@@ -18,7 +18,46 @@ Canonical upstream (read-only for demos): `https://github.com/Lindagh1/packmate-
 | Promotion / rollback PR | Fork promotion branch → fork `packmate-v2` |
 | Releases per demo | **None** — reuse the canonical lab release |
 
+make verify-demo-fork
+```
+
 Do **not** push to Lindagh1/packmate-agent, merge promotion PRs into upstream, create `lab-v2.x` tags, or move the canonical release tag.
+
+When creating the GitHub fork, **disable “Copy the main branch only”** so `packmate-v2` is included. If the fork only has `main`, recover with:
+
+```bash
+git fetch upstream packmate-v2
+git switch -c packmate-v2 upstream/packmate-v2
+git push -u origin packmate-v2
+```
+
+Disable pushes to canonical upstream:
+
+```bash
+git remote set-url --push upstream DISABLED
+```
+
+Before Module D:
+
+```bash
+make verify-github-write-readiness
+```
+
+If `git push` fails with askpass `ECONNREFUSED`, use a plain Workbench/system terminal, `unset GIT_ASKPASS SSH_ASKPASS`, then `gh auth login`.
+
+After bootstrap:
+
+```bash
+make verify-demo-fork-live
+make verify-gitops
+```
+
+Residue after project deletion:
+
+```bash
+make discover-packmate-resources
+make reset-lab   # dry-run; destructive needs CONFIRM_PACKMATE_RESET=packmate-lab-and-prod
+```
 
 ---
 

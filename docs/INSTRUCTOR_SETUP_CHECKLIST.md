@@ -27,9 +27,11 @@ Use before each Packmate v2 (DEV → PROD) session.
 
 ## Config pack for participants
 
-- [ ] Participants instructed to **fork** `Lindagh1/packmate-agent` and clone the fork
+- [ ] `make discover-packmate-resources` shows no unexpected STALE_PACKMATE (or reset planned)
+- [ ] Participants instructed to **fork** `Lindagh1/packmate-agent` with **packmate-v2** included (not “Copy the main branch only”)
 - [ ] `config/sandbox.env` template with `GIT_REPO_URL` placeholder + image digests (distributed out-of-band)
 - [ ] `ALLOW_CANONICAL_REPO_PROMOTION=false` (never enable for participants)
+- [ ] Participants run `make verify-demo-fork` then after bootstrap `make verify-demo-fork-live`
 - [ ] `LITELLM_API_KEY=dummy` (or lab token policy documented)
 - [ ] `ENABLE_CUSTOM_ENDPOINTS=true` and `CREATE_MODEL_CUSTOM_ENDPOINT=true` (official lab, DEV only)
 - [ ] `ALLOW_CREATE_NAMESPACE=false` (DEV project stays ClickOps)
