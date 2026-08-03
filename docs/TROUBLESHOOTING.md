@@ -87,6 +87,26 @@ make verify-github-write-readiness
 gh auth login -h github.com -p https -w
 ```
 
+### Pipeline publish-candidate Pending / PodReadyToStartContainers=False
+
+Often **not** a CNI bug. Check:
+
+```bash
+make diagnose-latest-pipelinerun
+oc get events -n packmate-lab --field-selector involvedObject.name=<publish-pod>
+```
+
+If you see `FailedMount` / `secret "packmate-ghcr-push" not found`:
+
+```text
+FAIL    Promotion push Secret missing
+DETAIL  publish-candidate cannot start until Secret/packmate-ghcr-push exists
+ACTION  make configure-promotion-registry && make verify-promotion-registry
+ACTION  Start a new PipelineRun (preserve the failed run as evidence)
+```
+
+Earlier tasks (clone…build-backend) succeed because only `publish-candidate` mounts that Secret.
+
 Or: `./scripts/setup-workbench-repository.sh` from an existing clone helper path. Do **not** delete files already present in `/opt/app-root/src`.
 
 ## Workbench — target directory exists without `.git`

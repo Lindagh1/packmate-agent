@@ -245,6 +245,17 @@ else
   sed -n '1,40p' /tmp/packmate-preflight-own.txt || true
 fi
 
+# Portable promotion push Secret (required before Pipeline publish-candidate)
+PUSH_SECRET="${PACKMATE_PROMOTION_PUSH_SECRET:-packmate-ghcr-push}"
+if oc -n "${PACKMATE_NAMESPACE}" get secret "${PUSH_SECRET}" >/dev/null 2>&1; then
+  pass "Promotion push Secret ${PUSH_SECRET} present in ${PACKMATE_NAMESPACE}"
+else
+  block "Promotion push Secret ${PUSH_SECRET} missing in ${PACKMATE_NAMESPACE}"
+  printf 'FAIL    publish-candidate will stay Pending (FailedMount)\n'
+  printf 'DETAIL  Task mounts Secret/%s; kubelet cannot start the Pod without it\n' "${PUSH_SECRET}"
+  printf 'ACTION  Instructor: make configure-promotion-registry && make verify-promotion-registry\n'
+fi
+
 printf '\n=== Summary ===\n'
 printf 'PASS=%s WARNING=%s BLOCKED=%s OPTIONAL_UNAVAILABLE=%s\n' "${PASS}" "${WARN}" "${BLOCK}" "${OPT}"
 if [[ "${BLOCK}" -gt 0 ]]; then

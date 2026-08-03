@@ -1,10 +1,10 @@
 # DOCX documentation delta report
 
-**Source:** Packmate clean-room deep audit (2026-08-03)  
-**Canonical release today:** `lab-v2.0.0` @ `7494359` (pre-hardening)  
+**Source:** Packmate clean-room deep audit (2026-08-03)
+**Canonical release today:** `lab-v2.0.0` @ `7494359` (pre-hardening)
 **Purpose:** Drive a later editable workshop DOCX update. Do not edit the external DOCX from this file alone.
 
-Path: `/tmp/packmate-deep-audit/DOCX_DELTA_REPORT.md`  
+Path: `/tmp/packmate-deep-audit/DOCX_DELTA_REPORT.md`
 Also mirrored under: `docs/implementation/DOCX_DELTA_REPORT.md`
 
 ---
@@ -100,18 +100,22 @@ make reset-lab
 
 ## Clean-room participant order (for DOCX procedure chapter)
 
-1. Canonical `lab-v2.0.0` exists  
-2. Fork exists with `packmate-v2`  
-3. Instructor: Operators + shared model Ready; `make discover-packmate-resources` clean or reset  
-4. Create DSP `packmate-lab` + code-server Workbench  
-5. Clone fork; add upstream; disable upstream push; configure-git  
-6. `config/sandbox.env` from example (`GIT_REPO_URL`=fork)  
-7. `verify-demo-fork` → `verify-github-write-readiness` → `preflight` → `bootstrap`  
-8. `verify-dev` → `verify-demo-fork-live` → `verify-gitops`  
-9. Playground + DEV Route  
-10. Pipeline (fork URL, PVC 2Gi, 7 tasks)  
-11. Promote PR in fork → merge → manual PROD Sync  
-12. PROD verify + rollback PR in fork  
-13. Repeat bootstrap: Secret RVs / model UID unchanged; no new release  
+1. Canonical `lab-v2.0.0` exists
+2. Fork exists with `packmate-v2`
+3. Instructor: Operators + shared model Ready; `make discover-packmate-resources` clean or reset
+4. Create DSP `packmate-lab` + code-server Workbench
+5. Clone fork; add upstream; disable upstream push; configure-git
+6. `config/sandbox.env` from example (`GIT_REPO_URL`=fork)
+7. `verify-demo-fork` → `verify-github-write-readiness` → `preflight` → `bootstrap`
+8. **Instructor:** `make configure-promotion-registry` (creates `packmate-ghcr-push`) before Module C
+9. `verify-dev` → `verify-demo-fork-live` → `verify-gitops`
+10. Playground + DEV Route
+11. Pipeline (fork URL, PVC 2Gi, 7 tasks) — if `publish-candidate` Pending with FailedMount, run `make diagnose-latest-pipelinerun`
+12. Promote PR in fork → merge → manual PROD Sync
+13. PROD verify + rollback PR in fork
+14. Repeat bootstrap: Secret RVs / model UID unchanged; no new release
+
+**Screenshot to add:** `FailedMount secret packmate-ghcr-push not found` event + recovery via `configure-promotion-registry`.
 
 **Full clean-room validation is NOT claimed until that path is executed live.**
+

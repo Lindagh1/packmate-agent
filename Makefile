@@ -11,7 +11,8 @@ SHELL := /bin/bash
 	configure-promotion-registry verify-promotion-registry \
 	verify-resource-ownership rotate-prod-llm-secret verify-demo-fork \
 	verify-demo-fork-live verify-github-write-readiness discover-packmate-resources \
-	reset-lab acceptance-static acceptance-prebootstrap acceptance-postbootstrap
+	reset-lab acceptance-static acceptance-prebootstrap acceptance-postbootstrap \
+	diagnose-latest-pipelinerun
 
 help:
 	@echo "Packmate lab targets:"
@@ -31,6 +32,7 @@ help:
 	@echo "  make configure-argocd-rbac  SSO group + AppProject participant role"
 	@echo "  make verify / verify-dev    DEV readiness (compat)"
 	@echo "  make verify-prod            PROD readiness after Argo Sync"
+	@echo "  make diagnose-latest-pipelinerun  Inspect latest PipelineRun Pending/FailedMount causes"
 	@echo "  make verify-demo-fork       Pre-bootstrap fork remotes/config (Argo INFO only)"
 	@echo "  make verify-demo-fork-live  Post-bootstrap: Applications must follow the fork"
 	@echo "  make verify-github-write-readiness  GitHub read vs write readiness"
@@ -95,6 +97,9 @@ acceptance-prebootstrap:
 
 acceptance-postbootstrap:
 	@bash "$(ROOT)/scripts/acceptance/acceptance-postbootstrap.sh"
+
+diagnose-latest-pipelinerun:
+	@bash "$(ROOT)/scripts/diagnose-latest-pipelinerun.sh"
 
 verify-gitops:
 	@bash "$(ROOT)/scripts/verify-gitops.sh"

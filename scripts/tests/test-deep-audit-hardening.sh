@@ -195,5 +195,20 @@ grep -q '\.generated' "${ROOT}/.gitignore" \
 grep -q 'DEV is Synced/Healthy' "${ROOT}/scripts/lib/fork-safety.sh" \
   && pass "live fork check requires DEV Synced/Healthy" || fail "live Synced/Healthy requirement"
 
+# Missing GHCR push Secret detection (static string contract)
+grep -q 'packmate-ghcr-push' "${ROOT}/scripts/preflight-sandbox.sh" \
+  && grep -q 'FailedMount' "${ROOT}/scripts/preflight-sandbox.sh" \
+  && pass "preflight blocks missing promotion push Secret" \
+  || fail "preflight blocks missing promotion push Secret"
+
+[[ -x "${ROOT}/scripts/diagnose-latest-pipelinerun.sh" ]] \
+  && grep -q 'FailedMount' "${ROOT}/scripts/diagnose-latest-pipelinerun.sh" \
+  && pass "diagnose-latest-pipelinerun detects FailedMount/ghcr-push" \
+  || fail "diagnose-latest-pipelinerun detects FailedMount/ghcr-push"
+
+grep -q 'diagnose-latest-pipelinerun' "${ROOT}/Makefile" \
+  && pass "diagnose-latest-pipelinerun Make target present" \
+  || fail "diagnose-latest-pipelinerun Make target present"
+
 printf '\ndeep-audit summary: PASS=%s FAIL=%s\n' "${PASS}" "${FAIL}"
 [[ "${FAIL}" -eq 0 ]]
