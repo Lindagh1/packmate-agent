@@ -46,7 +46,7 @@ logs or screenshots.
 | Field | Value |
 |-------|--------|
 | Action UI | Workbench terminal |
-| Value | `git clone https://github.com/Lindagh1/packmate-agent.git && cd packmate-agent && git switch packmate-v2` |
+| Value | Fork first: `git clone https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git && cd packmate-agent && git switch packmate-v2 && git remote add upstream https://github.com/Lindagh1/packmate-agent.git` |
 | Expected | Branch `packmate-v2`; dirs `backend`, `frontend`, `mcp-servers`, `playground` |
 | Validation | `git rev-parse --abbrev-ref HEAD` → `packmate-v2` |
 | Common issue | Auth required for private fork — use HTTPS PAT in Workbench, never commit token |

@@ -27,7 +27,9 @@ Use before each Packmate v2 (DEV → PROD) session.
 
 ## Config pack for participants
 
-- [ ] `config/sandbox.env` template with image digests (distributed out-of-band)
+- [ ] Participants instructed to **fork** `Lindagh1/packmate-agent` and clone the fork
+- [ ] `config/sandbox.env` template with `GIT_REPO_URL` placeholder + image digests (distributed out-of-band)
+- [ ] `ALLOW_CANONICAL_REPO_PROMOTION=false` (never enable for participants)
 - [ ] `LITELLM_API_KEY=dummy` (or lab token policy documented)
 - [ ] `ENABLE_CUSTOM_ENDPOINTS=true` and `CREATE_MODEL_CUSTOM_ENDPOINT=true` (official lab, DEV only)
 - [ ] `ALLOW_CREATE_NAMESPACE=false` (DEV project stays ClickOps)
@@ -40,7 +42,7 @@ Use before each Packmate v2 (DEV → PROD) session.
 - [ ] `oc -n packmate-prod get secret packmate-prod-llm` exists (values not shown)
 - [ ] `oc -n openshift-gitops get appproject packmate` and `oc -n openshift-gitops get application packmate-prod` exist; `make verify-gitops` passes
 - [ ] Argo CD `spec.rbac.scopes` includes `groups`; OpenShift group `packmate-lab-users` exists
-- [ ] Decide and document the **promote path** for this class: same-repo PR (default, `packmate-v2`), who has GitHub write access or forks, and who merges (see `docs/INSTRUCTOR_GUIDE.md` — multi-user pattern)
+- [ ] Decide and document the **fork-first promote path**: each participant forks, sets `GIT_REPO_URL`, runs `make verify-demo-fork`, and merges PRs only in their fork (see `docs/INSTRUCTOR_GUIDE.md`)
 - [ ] `gh auth status` succeeds on the machine/Workbench image participants will use for `scripts/promote-backend-image.sh --create-pr`
 - [ ] Argo CD **local admin password never shared**; break-glass retrieval procedure understood (`docs/INSTRUCTOR_GUIDE.md`) and rotated/disabled after class if used
 

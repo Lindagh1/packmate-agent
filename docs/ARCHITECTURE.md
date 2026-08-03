@@ -1,5 +1,18 @@
 # Architecture
 
+## Fork-first workshop model
+
+| Layer | Role |
+|-------|------|
+| Canonical upstream | `Lindagh1/packmate-agent` @ `packmate-v2` / `lab-v2.0.0` — immutable workshop source |
+| Participant fork | Writable Git history for Pipeline clones, promotion PRs, rollback PRs |
+| Argo CD | `Application/packmate-lab` and `Application/packmate-prod` use `GIT_REPO_URL` + `GIT_REVISION` from the fork |
+| Release policy | New `lab-v2.x` only when the workshop itself changes — not per demo |
+
+Validated technical workflow:
+
+**Playground → DEV → Tekton → durable GHCR candidate → PR in fork → Argo CD manual PROD Sync → PROD → rollback PR in fork**
+
 ## Lab pedagogy (150 minutes, DEV → PROD)
 
 Two namespaces on the same cluster:
@@ -58,8 +71,8 @@ flowchart TB
   BackendProd -->|BASE_URL /v1| Model
   WeatherMCP --> OpenMeteo[Open-Meteo API]
   WeatherMCPProd --> OpenMeteo
-  Pipeline -.->|"candidate digest, PASS gate"| PR[Pull request: deploy/overlays/prod]
-  PR -.->|merge| Git[packmate-v2]
+  Pipeline -.->|"candidate digest, PASS gate"| PR[Pull request in fork: deploy/overlays/prod]
+  PR -.->|merge in fork| Git[fork packmate-v2]
   Git -.->|Sync, manual, prune off| RouteProd
 ```
 

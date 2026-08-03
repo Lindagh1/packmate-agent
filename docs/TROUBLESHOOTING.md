@@ -57,9 +57,13 @@ Fix:
 ```bash
 cd /opt/app-root/src
 git clone --branch packmate-v2 --single-branch \
-  https://github.com/Lindagh1/packmate-agent.git packmate-agent
+  https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git packmate-agent
 cd packmate-agent
+git remote add upstream https://github.com/Lindagh1/packmate-agent.git
+make verify-demo-fork
 ```
+
+If promote/rollback prints `BLOCKED_CANONICAL_REPOSITORY_PROMOTION`, fix `origin` / `GIT_REPO_URL` to your fork.
 
 Or: `./scripts/setup-workbench-repository.sh` from an existing clone helper path. Do **not** delete files already present in `/opt/app-root/src`.
 

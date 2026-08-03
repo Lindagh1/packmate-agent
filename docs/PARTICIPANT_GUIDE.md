@@ -2,7 +2,23 @@
 
 **OpenShift AI DEV → PROD lab** · Branch `packmate-v2` · ≈ **150 minutes**
 
-Repository: `https://github.com/Lindagh1/packmate-agent.git`
+Canonical upstream (read-only for demos): `https://github.com/Lindagh1/packmate-agent.git`  
+**You work in your GitHub fork** — clone and promote there, never into canonical upstream.
+
+---
+
+## Fork-first workshop model
+
+| Concept | Value |
+|---------|--------|
+| Canonical upstream | `Lindagh1/packmate-agent` — immutable workshop source + release `lab-v2.0.0` |
+| Your writable repo | Your fork (`GIT_REPO_URL`) |
+| Demo branch | `packmate-v2` (or a dedicated branch such as `demo/sandbox2571`) |
+| Argo CD `repoURL` | Your fork |
+| Promotion / rollback PR | Fork promotion branch → fork `packmate-v2` |
+| Releases per demo | **None** — reuse the canonical lab release |
+
+Do **not** push to Lindagh1/packmate-agent, merge promotion PRs into upstream, create `lab-v2.x` tags, or move the canonical release tag.
 
 ---
 
@@ -70,7 +86,7 @@ Ask your instructor for:
 - the **OpenShift AI** dashboard URL and the **OpenShift console** / **Argo CD** links;
 - confirmation that model `llama-32-3b-instruct` is **Ready** in project `my-first-model`;
 - the four **digest-pinned** image references for `config/sandbox.env` (GHCR/Quay);
-- confirmation that you have **GitHub write access** (or a fork) on `Lindagh1/packmate-agent` — Module D opens a real pull request.
+- confirmation that you have **forked** `Lindagh1/packmate-agent` and can push to **your fork** — Module D opens a real pull request **in the fork**.
 
 You will **not** install Operators, deploy the Llama model, use an Argo CD admin password, or port-forward for the main path.
 
@@ -78,7 +94,8 @@ You will **not** install Operators, deploy the Llama model, use an Argo CD admin
 
 `/opt/app-root/src` can contain Workbench files **without** being a Git repository. Never run `git` commands as if `/opt/app-root/src` itself were the Packmate repo.
 
-In the Workbench terminal:
+1. Open `https://github.com/Lindagh1/packmate-agent` and click **Fork**.
+2. Clone **your fork** (not the canonical repository):
 
 ```bash
 cd /opt/app-root/src
@@ -86,10 +103,15 @@ cd /opt/app-root/src
 git clone \
   --branch packmate-v2 \
   --single-branch \
-  https://github.com/Lindagh1/packmate-agent.git \
+  https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git \
   packmate-agent
 
 cd packmate-agent
+
+git remote add upstream \
+  https://github.com/Lindagh1/packmate-agent.git
+
+git remote -v
 ```
 
 Alternative if the clone already exists:
@@ -100,7 +122,7 @@ git switch packmate-v2
 git pull --ff-only origin packmate-v2
 ```
 
-Or use the safe helper (never deletes `/opt/app-root/src` contents):
+Or use the safe helper (never deletes `/opt/app-root/src` contents; requires `GIT_REPO_URL` or `PACKMATE_REPOSITORY_URL` set to your fork):
 
 ```bash
 ./scripts/setup-workbench-repository.sh
@@ -114,6 +136,9 @@ Expected:
 git branch --show-current
 # → packmate-v2
 
+git remote get-url origin
+# → https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git
+
 git log -1 --oneline
 # → latest packmate-v2 commit
 
@@ -125,7 +150,9 @@ Then:
 
 ```bash
 cp config/sandbox.env.example config/sandbox.env
+# set GIT_REPO_URL to your fork URL
 # paste instructor image refs — never commit this file
+make verify-demo-fork
 make preflight
 make bootstrap
 make verify-dev
@@ -211,9 +238,10 @@ cd /opt/app-root/src
 git clone \
   --branch packmate-v2 \
   --single-branch \
-  https://github.com/Lindagh1/packmate-agent.git \
+  https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git \
   packmate-agent
 cd packmate-agent
+git remote add upstream https://github.com/Lindagh1/packmate-agent.git
 ```
 
 [Screenshot required: Repository open in code-server]
@@ -222,12 +250,13 @@ cd packmate-agent
 cp config/sandbox.env.example config/sandbox.env
 ```
 
-Edit `config/sandbox.env` and set the four image lines from the instructor (digest-pinned GHCR/Quay references). Keep placeholders such as `LITELLM_API_KEY=dummy` unless told otherwise.
+Edit `config/sandbox.env`: set `GIT_REPO_URL` to your fork URL and the four image lines from the instructor (digest-pinned GHCR/Quay references). Keep placeholders such as `LITELLM_API_KEY=dummy` unless told otherwise.
 
 > **Security Note:**
 > Never commit `config/sandbox.env`. It is gitignored.
 
 ```bash
+make verify-demo-fork
 make preflight
 make bootstrap
 make verify-dev
@@ -441,9 +470,9 @@ The script:
 1. reads the PipelineRun and refuses to continue unless it **Succeeded**;
 2. refuses to continue unless the AI quality gate **status is PASS** and **score ≥ 0.90**;
 3. edits **only** the backend image entry in `deploy/overlays/prod/kustomization.yaml` (never the dev overlay, frontend, or MCP images);
-4. commits on a new branch `promote/backend-<short-digest>`, pushes it, and opens a pull request to `packmate-v2` (requires `gh auth login` with write access, or a fork — ask your instructor).
+4. commits on a new branch `promote/backend-<short-digest>`, pushes it to **your fork**, and opens a pull request **into your fork's** `packmate-v2` (`PROMOTION_BASE_BRANCH`). Requires `gh auth login` with write access to the fork. Promotion into Lindagh1/packmate-agent is blocked (`BLOCKED_CANONICAL_REPOSITORY_PROMOTION`).
 
-**Expected result:** A new pull request appears on GitHub, its diff touching only `deploy/overlays/prod/kustomization.yaml`.
+**Expected result:** A new pull request appears on **your fork**, its diff touching only `deploy/overlays/prod/kustomization.yaml`.
 
 [Screenshot required: Promotion pull request]
 
@@ -459,12 +488,12 @@ Before merging, confirm in the PR description and diff:
 
 ### D.3. Merge
 
-Merge the pull request once reviewed (instructor may reserve merge rights in a shared class repo — see `docs/INSTRUCTOR_GUIDE.md`).
+Merge the pull request **in your fork** once reviewed.
 
-**Expected result:** `packmate-v2` now contains the new backend digest in the PROD overlay. Nothing changed yet in the cluster — that is Module E.
+**Expected result:** your fork's `packmate-v2` now contains the new backend digest in the PROD overlay. Nothing changed yet in the cluster — that is Module E.
 
 > **Security Note:**
-> `promote-backend-image.sh` never pushes directly to `packmate-v2` and never applies `deploy/overlays/prod` to the cluster. Merging Git does not deploy; only Argo CD Sync deploys.
+> `promote-backend-image.sh` never pushes directly to `packmate-v2`, never opens a PR into Lindagh1/packmate-agent, and never applies `deploy/overlays/prod` to the cluster. Merging Git does not deploy; only Argo CD Sync deploys.
 
 ---
 
@@ -542,7 +571,7 @@ The script:
 
 1. reads the **current** backend digest from `deploy/overlays/prod/kustomization.yaml`;
 2. walks the Git history of that file to find the most recent **different** digest;
-3. edits the overlay back to that previous digest, commits on branch `rollback/backend-<short-digest>`, pushes, and opens a pull request to `packmate-v2`.
+3. edits the overlay back to that previous digest, commits on branch `rollback/backend-<short-digest>`, pushes to **your fork**, and opens a pull request into your fork's `packmate-v2`.
 
 The script never calls `oc` and never touches the cluster — it only rewrites Git history forward with a new commit.
 

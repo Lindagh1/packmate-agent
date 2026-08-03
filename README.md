@@ -1,10 +1,28 @@
 # Packmate v2
 
-AI-powered travel packing assistant for an **OpenShift AI DEV → PROD lab** (~150 minutes): prototype in the Gen AI Playground, run it as a FastAPI + React app in **DEV** (`packmate-lab`), validate it with a Tekton Pipeline, **promote** it to **PROD** (`packmate-prod`) through a reviewed pull request, and deploy it with Argo CD.
+AI-powered travel packing assistant for an **OpenShift AI DEV → PROD workshop** (~150 minutes): prototype in the Gen AI Playground, run it as a FastAPI + React app in **DEV** (`packmate-lab`), validate it with a Tekton Pipeline, **promote** it to **PROD** (`packmate-prod`) through a reviewed pull request **in your fork**, and deploy it with Argo CD.
+
+## Fork-first workshop model
+
+- **Canonical upstream:** `https://github.com/Lindagh1/packmate-agent` (branch `packmate-v2`, release `lab-v2.0.0`) — immutable workshop source.
+- **Every workshop execution** happens in a **participant or demo fork**. Argo CD Applications watch the fork (`GIT_REPO_URL`), not canonical upstream.
+- Promotion and rollback PRs are **fork branch → fork `packmate-v2`** (or a dedicated demo branch). They never merge into Lindagh1/packmate-agent.
+- Demonstrations do **not** create `lab-v2.x` tags or GitHub Releases. Reuse the canonical release across demos.
+
+```bash
+# 1) Fork Lindagh1/packmate-agent on GitHub, then:
+git clone --branch packmate-v2 \
+  https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git
+cd packmate-agent
+git remote add upstream https://github.com/Lindagh1/packmate-agent.git
+cp config/sandbox.env.example config/sandbox.env
+# set GIT_REPO_URL to your fork URL, plus digest-pinned *_IMAGE and LLM_* values
+make verify-demo-fork
+```
 
 ## Release status
 
-- Tag: **`lab-v1.0.0`**
+- Tag: **`lab-v2.0.0`** (canonical reusable workshop baseline)
 - Images: public GHCR digests (see `docs/REPRODUCE_SANDBOX.md`)
 - Quality gate: **0.9559**
 - Validated PipelineRun + GitOps on OpenTLC sandbox (DEV path; see docs for the DEV/PROD split status)
@@ -13,11 +31,11 @@ AI-powered travel packing assistant for an **OpenShift AI DEV → PROD lab** (~1
 
 1. **DEV** (`packmate-lab`): create a Data Science Project + Workbench, `make bootstrap`, prototype in the Gen AI Playground (model + system prompt + MCP), then use the same idea industrialized on the DEV Route.
 2. **CI**: start Pipeline `packmate-ci` (tests → AI quality gate ≥0.90 → build backend). It only ever validates and builds in `packmate-lab` — it never deploys anywhere.
-3. **Promote**: `scripts/promote-backend-image.sh --create-pr` turns a PASSing candidate digest into a pull request that touches only `deploy/overlays/prod/kustomization.yaml`. Review it, then merge.
+3. **Promote**: `scripts/promote-backend-image.sh --create-pr` turns a PASSing candidate digest into a pull request **in your fork** that touches only `deploy/overlays/prod/kustomization.yaml`. Review it, then merge in the fork.
 4. **PROD** (`packmate-prod`): merging makes Argo CD Application `packmate-prod` **OutOfSync**. Sync it manually (OpenShift SSO, Prune disabled) to deploy. `packmate-prod` has no Workbench, Pipeline, Playground, or custom model endpoint — runtime only.
-5. **Rollback**: `scripts/rollback-prod-image.sh --create-pr` opens a pull request restoring the previous digest — no rebuild, no direct cluster edit.
+5. **Rollback**: `scripts/rollback-prod-image.sh --create-pr` opens a pull request in the fork restoring the previous digest — no rebuild, no direct cluster edit.
 
-`packmate-lab` is **DEV**. It is never production. Every change that reaches `packmate-prod` goes through Git (pull request), never a direct `oc apply`.
+`packmate-lab` is **DEV**. It is never production. Every change that reaches `packmate-prod` goes through Git (pull request in the fork), never a direct `oc apply`.
 
 Guides: [`docs/PARTICIPANT_GUIDE.md`](docs/PARTICIPANT_GUIDE.md) (Modules A–F) · [`docs/INSTRUCTOR_GUIDE.md`](docs/INSTRUCTOR_GUIDE.md) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/REPRODUCE_SANDBOX.md`](docs/REPRODUCE_SANDBOX.md) · [`docs/OPERATIONS.md`](docs/OPERATIONS.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) · Word assembly: [`docs/DOCX_ASSEMBLY_PLAN.md`](docs/DOCX_ASSEMBLY_PLAN.md)
 
@@ -62,9 +80,10 @@ flowchart TB
 
 ```bash
 cp config/sandbox.env.example config/sandbox.env
-# set digest-pinned *_IMAGE and LLM_* values from instructor
-# Workbench: clone into /opt/app-root/src/packmate-agent first (never treat /opt/app-root/src as the repo)
-make setup-workbench-repository   # optional safe clone/update helper
+# set GIT_REPO_URL to YOUR fork; digest-pinned *_IMAGE and LLM_* from instructor
+# Workbench: clone the fork into /opt/app-root/src/packmate-agent (never treat /opt/app-root/src as the repo)
+make verify-demo-fork       # origin / GIT_REPO_URL must be a fork
+make setup-workbench-repository   # optional safe clone/update helper (requires fork URL)
 make configure-git                # optional; PACKMATE_GIT_NAME / PACKMATE_GIT_EMAIL
 make preflight              # cluster + repo + image + RHOAI mirror checks
 make bootstrap              # Prerequisites + Argo CD reconciles DEV; PROD prep only
@@ -108,6 +127,8 @@ cd ../frontend && npm ci && npm run test -- --run
 - Ordinary `make bootstrap` never rotates Secrets; use `ROTATE_PACKMATE_PROD_LLM_SECRET=true make rotate-prod-llm-secret` when intentional
 - A bootstrap rerun must leave `packmate-lab` Synced/Healthy and must not bump Secret resourceVersions when data is unchanged
 - Do **not** push promotion/rollback branches straight to `packmate-v2` — pull request only
+- Do **not** promote into Lindagh1/packmate-agent — use a fork (`make verify-demo-fork`)
+- Do **not** create a `lab-v2.x` tag or GitHub Release per demonstration
 - GitOps / Rollouts / EvalHub are required for the PROD modules; Rollouts / EvalHub stay optional extensions
 
 ## License

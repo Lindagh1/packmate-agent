@@ -4,6 +4,7 @@
 
 | Target | Purpose |
 |--------|---------|
+| `make verify-demo-fork` | Confirm origin / `GIT_REPO_URL` are a fork (not canonical upstream) |
 | `make preflight` | Cluster/image checks |
 | `make bootstrap` | Idempotent prerequisites + Argo CD reconciles DEV; PROD prep (no PROD workload apply/sync); Secrets no-op when unchanged |
 | `make prepare-prod` | Standalone, idempotent PROD prep (namespace, Secret, image-pull RBAC, Argo AppProject/Application) |
@@ -28,7 +29,15 @@
 
 ## Promotion, Sync, and rollback — without the Argo CD admin password
 
-Every PROD change is: **Pipeline validates (DEV) → pull request promotes → merge →
+## Fork-first workshop model
+
+- Canonical upstream: `Lindagh1/packmate-agent` (release `lab-v2.0.0`).
+- Writable repo: participant/instructor fork (`GIT_REPO_URL`).
+- Argo CD Applications use `repoURL=GIT_REPO_URL` and `targetRevision=GIT_REVISION`.
+- Promote/rollback open PRs **inside the fork** only (`BLOCKED_CANONICAL_REPOSITORY_PROMOTION` otherwise).
+- Demonstrations do not create tags or GitHub Releases.
+
+Every PROD change is: **Pipeline validates (DEV) → pull request promotes (fork) → merge (fork) →
 Argo CD Sync deploys (PROD)**. None of these steps needs the Argo CD local admin
 account; operators authenticate to Argo CD with OpenShift SSO and hold only the
 AppProject `promoter` role (`get` + `sync` on `Application/packmate-prod`).
@@ -39,7 +48,7 @@ AppProject `promoter` role (`get` + `sync` on `Application/packmate-prod`).
 scripts/promote-backend-image.sh --pipelinerun <pipelinerun-name> --namespace packmate-lab --create-pr
 ```
 
-Edits only `deploy/overlays/prod/kustomization.yaml`, opens a PR to `packmate-v2`. Review, then merge.
+Edits only `deploy/overlays/prod/kustomization.yaml`, opens a PR to `PROMOTION_BASE_BRANCH` **in the fork**. Review, then merge in the fork.
 
 **Sync** after merge (Argo CD UI, signed in via OpenShift SSO):
 

@@ -116,7 +116,7 @@ Anonymous `skopeo inspect` on all four: **OK**.
 |-------|--------|
 | Application | `packmate-lab` in `openshift-gitops` |
 | Destination | `packmate-acceptance-20260722-1419` |
-| Repository | `https://github.com/Lindagh1/packmate-agent.git` @ `packmate-v2` |
+| Repository | Participant fork (`GIT_REPO_URL`) @ `packmate-v2` — never promote into `Lindagh1/packmate-agent` |
 | Automated prune / selfHeal | Absent (manual sync) |
 | Sync | Manual → **Synced** |
 | Health | **Healthy** |
@@ -226,3 +226,14 @@ The participant guide was restructured into Modules A–F (OpenShift AI, Develop
 | PROD baseline | `ghcr.io/lindagh1/packmate-backend@sha256:c10fbeb6…` |
 | Applications | packmate-lab + packmate-prod under AppProject packmate |
 | Participant RBAC | get packmate/*; sync packmate-prod |
+
+## Addendum — Fork-first workshop model (lab-v2.0.0)
+
+| Item | Result |
+|------|--------|
+| Canonical upstream | `Lindagh1/packmate-agent` @ `packmate-v2` — read-only for demos |
+| Writable target | Participant/demo fork (`GIT_REPO_URL`) |
+| Safety | `make verify-demo-fork`; promote/rollback emit `BLOCKED_CANONICAL_REPOSITORY_PROMOTION` against upstream |
+| Argo CD | Applications use `__GIT_REPO_URL__` / `__GIT_REVISION__` (fork), not hard-coded canonical |
+| Release policy | One canonical `lab-v2.0.0`; no release per demonstration |
+| Tests | `scripts/tests/test-fork-first-workshop.sh` |

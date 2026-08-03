@@ -1,13 +1,20 @@
 # Reproduce the Packmate OpenShift AI DEV → PROD sandbox
 
-Target: a **new ephemeral sandbox** where participants ClickOps the DEV Data
-Science Project + Workbench, then run:
+Target: a **new ephemeral sandbox** where participants **fork** the canonical repository,
+ClickOps the DEV Data Science Project + Workbench, then run:
 
 ```bash
+make verify-demo-fork
 make preflight
 make bootstrap
 make verify
 ```
+
+## Fork-first workshop model
+
+- Canonical upstream `Lindagh1/packmate-agent` / release `lab-v2.0.0` is the immutable source.
+- Set `GIT_REPO_URL` to the **fork** URL; Argo CD Applications follow that fork.
+- Promotion and rollback PRs stay in the fork. Do not create a new `lab-v2.x` release per sandbox.
 
 Bootstrap deploys **DEV** (`packmate-lab`) from **prebuilt images** (GHCR/Quay/internal
 digests) and **prepares PROD** (`packmate-prod`) — namespace, Secret, image-pull
@@ -23,7 +30,7 @@ model.
 | PROD | `packmate-prod` | `make bootstrap` → `prepare-prod.sh` (prep only) + Argo CD Sync (workloads) | App workloads only — no Workbench, Pipeline, Playground, custom model endpoint |
 
 PROD workloads only ever change through: **Pipeline (validate, DEV) → pull request
-(promote) → merge → Argo CD Sync (deploy, PROD)**.
+in the fork (promote) → merge in the fork → Argo CD Sync (deploy, PROD)**.
 
 ## Architecture split
 
@@ -43,10 +50,12 @@ PROD workloads only ever change through: **Pipeline (validate, DEV) → pull req
 
 ```bash
 cp config/sandbox.env.example config/sandbox.env
+# Set GIT_REPO_URL to your fork (not Lindagh1/packmate-agent).
 # Set digest-pinned *_IMAGE values from the publish-lab-images workflow summary.
 # Set LLM_BASE_URL / LLM_MODEL / LITELLM_API_KEY — reused for both packmate-llm (DEV)
 # and packmate-prod-llm (PROD) Secrets.
 # Never commit config/sandbox.env.
+make verify-demo-fork
 ```
 
 ## Commands
@@ -75,15 +84,18 @@ make cleanup                # interactive, DEV (packmate-lab) only
 ### Final new-sandbox workflow
 
 1. Provision the OpenShift AI sandbox.
-2. Create Data Science Project `packmate-lab`.
-3. Create and open the Workbench.
-4. Open a terminal.
-5. Clone into `/opt/app-root/src/packmate-agent`.
-6. Configure `config/sandbox.env`.
-7. Run `make preflight`.
-8. Run `make bootstrap`.
-9. Run `make verify-dev`.
-10. Start Pipeline `packmate-ci` with VolumeClaimTemplate **2 GiB**.
+2. Fork `Lindagh1/packmate-agent` on GitHub.
+3. Create Data Science Project `packmate-lab`.
+4. Create and open the Workbench.
+5. Open a terminal.
+6. Clone **the fork** into `/opt/app-root/src/packmate-agent`; add canonical as `upstream`.
+7. Configure `config/sandbox.env` with `GIT_REPO_URL` = fork URL.
+8. Run `make verify-demo-fork`.
+9. Run `make preflight`.
+10. Run `make bootstrap`.
+11. Run `make verify-dev`.
+12. Start Pipeline `packmate-ci` with VolumeClaimTemplate **2 GiB**.
+13. Promote via PR **in the fork**; Sync `packmate-prod` manually.
 
 ### Why the Pipeline Python digest is not in Git
 
