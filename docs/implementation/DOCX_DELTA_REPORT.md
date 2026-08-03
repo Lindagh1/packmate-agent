@@ -17,10 +17,10 @@ Also mirrored under: `docs/implementation/DOCX_DELTA_REPORT.md`
 | Before you start | Fork-first clone + upstream DISABLED |
 | Module A.4 Clone and bootstrap | Fork URL, `verify-demo-fork`, then bootstrap |
 | Module C Pipeline | git-url = fork; seven tasks including publish-candidate |
-| Module D Promotion | PR inside fork; `verify-github-write-readiness`; askpass recovery |
+| Module D Promotion | PR inside fork; `verify-github-write-readiness`; askpass recovery; `BLOCKED_NO_PROMOTION_DIFF` + demo baseline |
 | Module E Production | Argo follows fork; manual Sync |
 | Module F Rollback | Rollback PR inside fork |
-| Instructor appendix | Residue discovery + reset-lab; no release per demo |
+| Instructor appendix | Residue discovery + reset-lab; no release per demo; Mode B `demo/sandbox2571` baseline |
 | Architecture diagram caption | Fork as writable GitOps source |
 
 ---
@@ -67,6 +67,7 @@ Also mirrored under: `docs/implementation/DOCX_DELTA_REPORT.md`
 2. `git remote -v` showing origin=fork, upstream=canonical, push DISABLED
 3. `make verify-demo-fork` PASS (pre-bootstrap), including INFO about Argo migration if residue exists
 4. `make verify-github-write-readiness` PASS
+4b. `make verify-demo-baseline` PASS (or instructor prepare-demo-baseline on fork)
 5. `make verify-demo-fork-live` PASS after bootstrap
 6. `make discover-packmate-resources` showing STALE_PACKMATE when namespaces deleted
 7. `make reset-lab` dry-run PLAN output
@@ -116,6 +117,15 @@ make reset-lab
 14. Repeat bootstrap: Secret RVs / model UID unchanged; no new release
 
 **Screenshot to add:** `FailedMount secret packmate-ghcr-push not found` event + recovery via `configure-promotion-registry`.
+
+## Screenshots that must change for repeatable promotion baseline
+
+- Any Module D screenshot implying a PR when digests were identical (“Nothing to promote”)
+- Add: `BLOCKED_NO_PROMOTION_DIFF` terminal output + `make verify-demo-baseline`
+- Add: instructor `CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline` on **fork** only (never Lindagh1)
+- Add: Mode B `demo/sandbox2571` as Argo `targetRevision` / promotion base
+- Replace compare URLs that point at Lindagh1 or at stale `promote/backend-03beee2d…` when the live candidate is a different digest
+- Never show tokens, `git credential store` with a plaintext secret, or invented digests
 
 **Full clean-room validation is NOT claimed until that path is executed live.**
 

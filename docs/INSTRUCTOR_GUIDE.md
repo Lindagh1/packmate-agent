@@ -167,6 +167,47 @@ make verify-prod    # after a Sync
 
 Promotion into `Lindagh1/packmate-agent` exits with `BLOCKED_CANONICAL_REPOSITORY_PROMOTION` unless `ALLOW_CANONICAL_REPO_PROMOTION=true` (instructor-only).
 
+## Repeatable demos: PROD baseline ≠ Pipeline candidate
+
+Running Pipeline `packmate-ci` again after PROD already pins the same GHCR digest produces **no promotion PR**. The promote script prints `BLOCKED_NO_PROMOTION_DIFF` and does not create a branch.
+
+Keep three layers separate:
+
+1. **Workshop release** (`lab-v2.0.0` on Lindagh1) — never modified for a demo.
+2. **Demo PROD baseline** — previous known-good digest, **only** in the participant/demo fork.
+3. **Pipeline candidate** — digest from the current Succeeded PipelineRun.
+
+**Default branch strategy (Mode B):** disposable `demo/sandbox2571` in the fork.
+
+```bash
+# In the fork clone (origin = fork, never Lindagh1):
+# config/sandbox.env:
+#   GIT_REPO_URL=https://github.com/<fork-owner>/packmate-agent.git
+#   GIT_REVISION=demo/sandbox2571
+#   PROMOTION_BASE_BRANCH=demo/sandbox2571
+#   DEMO_BASELINE_MODE=demo-branch
+#   PACKMATE_DEMO_BRANCH=demo/sandbox2571
+#   PACKMATE_DEMO_BASELINE_DIGEST=sha256:03beee2d…   # lab-v2.0.0; do not invent
+
+make verify-demo-baseline
+CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline
+# Then re-point Argo (make bootstrap / prepare-prod) so Applications follow demo/sandbox2571
+```
+
+**Mode A** (`DEMO_BASELINE_MODE=fork-packmate-v2`) updates fork `packmate-v2` explicitly. Prefer Mode B so fork `packmate-v2` can stay a clean mirror of canonical.
+
+Never claim a promotion occurred when candidate and current PROD digest are identical. Never push demo baseline state to Lindagh1/packmate-agent.
+
+### GitHub 403 / VS Code askpass
+
+`make verify-github-write-readiness` distinguishes read access, branch existence, authenticated write, missing `gh`, and VS Code askpass `ECONNREFUSED`. Supported options (never store tokens in Git, `sandbox.env`, scripts, or screenshots):
+
+- **A)** Fine-grained GitHub token at the interactive HTTPS password prompt
+- **B)** Organization-approved git credential helper (user-configured)
+- **C)** SSH remote when a valid key is already available
+
+Do not run `git credential store` with a plaintext token from this workshop. To create a promotion branch locally without verified push auth: `ALLOW_MANUAL_PROMOTION_COMPLETION=true`.
+
 ## Multi-user pattern: fork / namespace / group per participant
 
 The reference model for this lab is **one ephemeral sandbox cluster per participant** (for example an OpenTLC-style sandbox) **plus one GitHub fork per participant**. On that model there is no naming collision: each participant's cluster has exactly one `packmate-lab`, one `packmate-prod`, one AppProject `packmate`, and one Application `packmate-prod`, all watching **their fork**.

@@ -29,7 +29,8 @@ Two namespaces on the same cluster:
 |-------|----------|
 | Participant ClickOps | Data Science Project (DEV), Workbench, AI asset endpoints, Playground, Pipeline Start, promotion PR review/merge, Argo Sync (PROD) |
 | `make bootstrap` | Prerequisites only for Git-tracked runtime: Secrets (idempotent), custom model endpoint, MCP registration, Tekton Pipeline, AppProject/Applications. **Argo CD Application `packmate-lab` reconciles `deploy/overlays/dev`**. Also **prepares** PROD (namespace, Secret, image-pull RBAC, Applications) without deploying or syncing PROD workloads |
-| `scripts/promote-backend-image.sh` | Reads a Succeeded PipelineRun + PASS quality gate in DEV, edits **only** the backend digest in `deploy/overlays/prod/kustomization.yaml`, opens a pull request — never applies to the cluster |
+| `scripts/promote-backend-image.sh` | Reads a Succeeded PipelineRun + PASS quality gate in DEV, edits **only** the backend digest in `deploy/overlays/prod/kustomization.yaml`, opens a pull request — never applies to the cluster. Exits early with `BLOCKED_NO_PROMOTION_DIFF` when PROD already equals the candidate. |
+| `scripts/verify-demo-baseline.sh` / `prepare-demo-baseline.sh` | Read-only check / fork-only demo PROD baseline reset so repeated demos always have a promotion diff |
 | Argo CD | Application `packmate-lab` (automated, prune off, selfHeal off) owns DEV runtime; Application `packmate-prod` (manual Sync, prune off, selfHeal off) is the **only** thing that deploys to PROD |
 | Platform prerequisites | OpenShift AI, Pipelines, OpenShift GitOps, shared Llama in `my-first-model`, prebuilt images |
 

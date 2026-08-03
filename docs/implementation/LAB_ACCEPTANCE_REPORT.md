@@ -245,6 +245,8 @@ The participant guide was restructured into Modules A–F (OpenShift AI, Develop
 | Pre-bootstrap fork check | `make verify-demo-fork` — Argo upstream residue = INFO/ACTION |
 | Post-bootstrap fork check | `make verify-demo-fork-live` wired into `make verify-gitops` |
 | GitHub write readiness | `make verify-github-write-readiness` (askpass / ECONNREFUSED guidance) |
+| Repeatable demo baseline | `make verify-demo-baseline` / `make prepare-demo-baseline` (fork-only; Mode B `demo/sandbox2571`) |
+| Early no-diff promotion | `BLOCKED_NO_PROMOTION_DIFF` before branch creation when PROD == candidate |
 | Residue discovery | `make discover-packmate-resources` (read-only classifications) |
 | Safe reset | `make reset-lab` dry-run; destructive needs `CONFIRM_PACKMATE_RESET=packmate-lab-and-prod` |
 | Acceptance | `make acceptance-static` / `acceptance-prebootstrap` / `acceptance-postbootstrap` |

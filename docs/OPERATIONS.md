@@ -7,6 +7,8 @@
 | `make verify-demo-fork` | Pre-bootstrap: fork remotes/config (Argo migration is INFO only) |
 | `make verify-demo-fork-live` | Post-bootstrap: Applications must follow the fork |
 | `make verify-github-write-readiness` | Distinguish read access vs authenticated write (no tokens printed) |
+| `make verify-demo-baseline` | Read-only: current PROD digest vs Pipeline candidate / known-good baseline |
+| `make prepare-demo-baseline` | Fork-only demo PROD baseline reset (`CONFIRM_DEMO_BASELINE_RESET=participant-fork-only`) |
 | `make discover-packmate-resources` | Read-only residue discovery (STALE_PACKMATE classification) |
 | `make reset-lab` | Dry-run Packmate reset; destructive needs `CONFIRM_PACKMATE_RESET=packmate-lab-and-prod` |
 | `make preflight` | Cluster/image checks |
@@ -52,7 +54,9 @@ AppProject `promoter` role (`get` + `sync` on `Application/packmate-prod`).
 scripts/promote-backend-image.sh --pipelinerun <pipelinerun-name> --namespace packmate-lab --create-pr
 ```
 
-Edits only `deploy/overlays/prod/kustomization.yaml`, opens a PR to `PROMOTION_BASE_BRANCH` **in the fork**. Review, then merge in the fork.
+If the script prints `BLOCKED_NO_PROMOTION_DIFF`, PROD already uses the candidate digest — there is **no** PR to open. Resolve with `make verify-demo-baseline` and (instructor, fork only) `CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline` before re-running the Pipeline exercise. Never invent digests; never change Lindagh1 PROD for a demo.
+
+The script edits only `deploy/overlays/prod/kustomization.yaml` and opens a PR to `PROMOTION_BASE_BRANCH` **in the fork**. Review, then merge in the fork.
 
 **Sync** after merge (Argo CD UI, signed in via OpenShift SSO):
 

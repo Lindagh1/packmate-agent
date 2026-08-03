@@ -92,6 +92,7 @@ make cleanup                # interactive, DEV (packmate-lab) only
 7. Configure `config/sandbox.env` with `GIT_REPO_URL` = fork URL.
 8. Run `make verify-demo-fork`.
 9. Run `make verify-github-write-readiness` (Module D prep).
+10. Instructor (repeated demos): `make verify-demo-baseline`; if blocked, prepare Mode B baseline on the fork (`CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline`) so PROD ≠ candidate before Module C/D.
 10. Run `make preflight`.
 11. Run `make bootstrap`.
 12. Run `make verify-dev`.

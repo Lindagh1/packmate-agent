@@ -41,8 +41,13 @@ Before Module D:
 
 ```bash
 make verify-github-write-readiness
+make verify-demo-baseline
+# If the instructor prepared a demo branch:
+#   GIT_REVISION=demo/sandbox2571
+#   PROMOTION_BASE_BRANCH=demo/sandbox2571
 ```
 
+If `make verify-demo-baseline` reports `BLOCKED_NO_PROMOTION_DIFF`, **do not invent a digest**. Ask the instructor to run the fork-only baseline reset (`make prepare-demo-baseline` with the documented confirmation token) so PROD pins a previous known-good digest before you start Module C again.
 If `git push` fails with askpass `ECONNREFUSED`, use a plain Workbench/system terminal, `unset GIT_ASKPASS SSH_ASKPASS`, then `gh auth login`.
 
 After bootstrap:
@@ -509,7 +514,8 @@ The script:
 1. reads the PipelineRun and refuses to continue unless it **Succeeded**;
 2. refuses to continue unless the AI quality gate **status is PASS** and **score ≥ 0.90**;
 3. edits **only** the backend image entry in `deploy/overlays/prod/kustomization.yaml` (never the dev overlay, frontend, or MCP images);
-4. commits on a new branch `promote/backend-<short-digest>`, pushes it to **your fork**, and opens a pull request **into your fork's** `packmate-v2` (`PROMOTION_BASE_BRANCH`). Requires `gh auth login` with write access to the fork. Promotion into Lindagh1/packmate-agent is blocked (`BLOCKED_CANONICAL_REPOSITORY_PROMOTION`).
+4. commits on a new branch `promote/backend-<short-digest>`, pushes it to **your fork**, and opens a pull request **into your fork's** promotion base branch (`PROMOTION_BASE_BRANCH`, usually `packmate-v2` or `demo/sandbox2571`). Requires `gh auth login` with write access to the fork. Promotion into Lindagh1/packmate-agent is blocked (`BLOCKED_CANONICAL_REPOSITORY_PROMOTION`).
+5. If the PROD overlay **already** pins the candidate digest, the script exits **before** creating a branch with `BLOCKED_NO_PROMOTION_DIFF` (non-zero). That is not a successful promotion — there is nothing to review.
 
 **Expected result:** A new pull request appears on **your fork**, its diff touching only `deploy/overlays/prod/kustomization.yaml`.
 

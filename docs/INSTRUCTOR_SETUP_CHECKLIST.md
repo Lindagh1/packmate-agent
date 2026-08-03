@@ -46,6 +46,8 @@ Use before each Packmate v2 (DEV → PROD) session.
 - [ ] Argo CD `spec.rbac.scopes` includes `groups`; OpenShift group `packmate-lab-users` exists
 - [ ] Decide and document the **fork-first promote path**: each participant forks, sets `GIT_REPO_URL`, runs `make verify-demo-fork`, and merges PRs only in their fork (see `docs/INSTRUCTOR_GUIDE.md`)
 - [ ] `gh auth status` succeeds on the machine/Workbench image participants will use for `scripts/promote-backend-image.sh --create-pr`
+- [ ] `make verify-github-write-readiness` PASS (or documented manual browser/terminal completion)
+- [ ] For instructor re-demos: Mode B `demo/sandbox2571` prepared (`make verify-demo-baseline` PASS vs the intended Pipeline candidate)
 - [ ] Argo CD **local admin password never shared**; break-glass retrieval procedure understood (`docs/INSTRUCTOR_GUIDE.md`) and rotated/disabled after class if used
 
 ## Smoke on instructor project

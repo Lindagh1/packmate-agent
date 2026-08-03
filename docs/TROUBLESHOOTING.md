@@ -65,6 +65,26 @@ make verify-demo-fork
 
 If promote/rollback prints `BLOCKED_CANONICAL_REPOSITORY_PROMOTION`, fix `origin` / `GIT_REPO_URL` to your fork.
 
+### BLOCKED_NO_PROMOTION_DIFF / “Nothing to promote”
+
+**Symptom:** PipelineRun Succeeded, but `promote-backend-image.sh` exits non-zero with `BLOCKED_NO_PROMOTION_DIFF` (or historically printed “Nothing to promote” after creating a throwaway branch).
+
+**Cause:** `deploy/overlays/prod/kustomization.yaml` already pins the same backend digest as the Pipeline candidate. There is no Git diff and **no PR**.
+
+**Fix (instructor, disposable fork only — never Lindagh1):**
+
+```bash
+make verify-demo-baseline
+# Prefer Mode B demo branch:
+#   GIT_REVISION=demo/sandbox2571
+#   PROMOTION_BASE_BRANCH=demo/sandbox2571
+#   PACKMATE_DEMO_BASELINE_DIGEST=<known-good sha256 from lab history>
+CONFIRM_DEMO_BASELINE_RESET=participant-fork-only make prepare-demo-baseline
+# Re-point Argo Applications to the fork/demo branch, then re-run Module D
+```
+
+Do not invent digests. Do not `oc set image`. Do not claim a promotion occurred when digests are identical.
+
 ### Pre-bootstrap vs post-bootstrap fork checks
 
 `make verify-demo-fork` must pass before bootstrap. If Applications still point at Lindagh1/packmate-agent, that is **INFO/ACTION**, not failure — bootstrap migrates them.
@@ -81,11 +101,19 @@ make reset-lab   # dry-run
 
 ### Git push askpass ECONNREFUSED (VS Code / Cursor)
 
+HTTPS push may fail with `403 Missing or invalid credentials` and askpass `ECONNREFUSED`.
+
 ```bash
 unset GIT_ASKPASS SSH_ASKPASS VSCODE_GIT_ASKPASS_NODE VSCODE_GIT_IPC_HANDLE
 make verify-github-write-readiness
+# Options (never put tokens in sandbox.env, Git, scripts, or screenshots):
+# A) Fine-grained token at the interactive HTTPS password prompt
+# B) Organization-approved git credential helper
+# C) SSH remote when a valid key already exists
 gh auth login -h github.com -p https -w
 ```
+
+Do **not** run `git credential store` with a plaintext token from this workshop. Optional fork-only write probe: `CONFIRM_GITHUB_WRITE_PROBE=fork-only make verify-github-write-readiness`.
 
 ### Pipeline publish-candidate Pending / PodReadyToStartContainers=False
 

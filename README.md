@@ -9,6 +9,16 @@ AI-powered travel packing assistant for an **OpenShift AI DEV → PROD workshop*
 - Promotion and rollback PRs are **fork branch → fork `packmate-v2`** (or a dedicated demo branch). They never merge into Lindagh1/packmate-agent.
 - Demonstrations do **not** create `lab-v2.x` tags or GitHub Releases. Reuse the canonical release across demos.
 
+**Repeatable demos (instructors):** keep three distinct concepts:
+
+| Concept | Meaning |
+|---------|---------|
+| Workshop release | Immutable `lab-v2.0.0` on Lindagh1 — never modified by demos |
+| Demo PROD baseline | Known-good previous digest in the **fork** (prefer branch `demo/sandbox2571`) |
+| Pipeline candidate | Digest from the current Succeeded PipelineRun — must differ from the baseline before Module D |
+
+Default strategy is **Mode B**: disposable `demo/sandbox2571` in the fork (`GIT_REVISION` / `PROMOTION_BASE_BRANCH`). Mode A (`packmate-v2` on the fork) is supported when explicitly configured.
+
 ```bash
 # 1) Fork Lindagh1/packmate-agent on GitHub, then:
 git clone --branch packmate-v2 \
@@ -31,7 +41,7 @@ make verify-demo-fork
 
 1. **DEV** (`packmate-lab`): create a Data Science Project + Workbench, `make bootstrap`, prototype in the Gen AI Playground (model + system prompt + MCP), then use the same idea industrialized on the DEV Route.
 2. **CI**: start Pipeline `packmate-ci` (tests → AI quality gate ≥0.90 → build backend). It only ever validates and builds in `packmate-lab` — it never deploys anywhere.
-3. **Promote**: `scripts/promote-backend-image.sh --create-pr` turns a PASSing candidate digest into a pull request **in your fork** that touches only `deploy/overlays/prod/kustomization.yaml`. Review it, then merge in the fork.
+3. **Promote**: `scripts/promote-backend-image.sh --create-pr` turns a PASSing candidate digest into a pull request **in your fork** that touches only `deploy/overlays/prod/kustomization.yaml`. Review it, then merge in the fork. If PROD already pins the same digest as the Pipeline candidate, promotion is blocked with `BLOCKED_NO_PROMOTION_DIFF` — instructors prepare a disposable demo baseline first (`make verify-demo-baseline` / `make prepare-demo-baseline`).
 4. **PROD** (`packmate-prod`): merging makes Argo CD Application `packmate-prod` **OutOfSync**. Sync it manually (OpenShift SSO, Prune disabled) to deploy. `packmate-prod` has no Workbench, Pipeline, Playground, or custom model endpoint — runtime only.
 5. **Rollback**: `scripts/rollback-prod-image.sh --create-pr` opens a pull request in the fork restoring the previous digest — no rebuild, no direct cluster edit.
 
@@ -84,6 +94,8 @@ cp config/sandbox.env.example config/sandbox.env
 # Workbench: clone the fork into /opt/app-root/src/packmate-agent (never treat /opt/app-root/src as the repo)
 make verify-demo-fork       # Pre-bootstrap: origin/GIT_REPO_URL must be a fork (Argo INFO only)
 make verify-github-write-readiness  # Read vs write GitHub access; detects VS Code askpass issues
+make verify-demo-baseline           # Read-only: PROD digest vs Pipeline candidate (no silent Git edits)
+make prepare-demo-baseline          # Instructor: reset disposable fork/demo PROD baseline (needs CONFIRM_…)
 make setup-workbench-repository   # optional safe clone/update helper (requires fork URL)
 make configure-git                # optional; PACKMATE_GIT_NAME / PACKMATE_GIT_EMAIL
 make preflight              # cluster + repo + image + RHOAI mirror checks
