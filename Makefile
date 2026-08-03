@@ -9,7 +9,7 @@ SHELL := /bin/bash
 	configure-git setup-workbench-repository security-check \
 	check-gitops-prerequisites install-gitops-operator wait-for-gitops instructor-setup \
 	configure-promotion-registry verify-promotion-registry \
-	verify-resource-ownership rotate-prod-llm-secret
+	verify-resource-ownership rotate-prod-llm-secret verify-demo-fork
 
 help:
 	@echo "Packmate lab targets:"
@@ -29,6 +29,7 @@ help:
 	@echo "  make configure-argocd-rbac  SSO group + AppProject participant role"
 	@echo "  make verify / verify-dev    DEV readiness (compat)"
 	@echo "  make verify-prod            PROD readiness after Argo Sync"
+	@echo "  make verify-demo-fork       Confirm origin/GIT_REPO_URL are a fork (not canonical)"
 	@echo "  make verify-gitops          AppProject/Applications/RBAC checks"
 	@echo "  make validate-prod          Static PROD overlay checks"
 	@echo "  make verify-python-deps     RHOAI mirror dependency compatibility (in-cluster)"
@@ -63,6 +64,9 @@ verify verify-dev:
 
 verify-prod:
 	@bash "$(ROOT)/scripts/verify-prod.sh"
+
+verify-demo-fork:
+	@bash "$(ROOT)/scripts/verify-demo-fork.sh"
 
 verify-gitops:
 	@bash "$(ROOT)/scripts/verify-gitops.sh"
@@ -105,7 +109,8 @@ test:
 	  bash "$(ROOT)/scripts/tests/test-workbench-repository-setup.sh"; \
 	bash "$(ROOT)/scripts/tests/test-gitops-portable-prod.sh"; \
 	bash "$(ROOT)/scripts/tests/test-bootstrap-ownership-secrets.sh"; \
-	bash "$(ROOT)/scripts/tests/test-kustomize-replicas-recovery.sh"
+	bash "$(ROOT)/scripts/tests/test-kustomize-replicas-recovery.sh"; \
+	bash "$(ROOT)/scripts/tests/test-fork-first-workshop.sh"
 
 render:
 	@bash "$(ROOT)/scripts/render-manifests.sh"

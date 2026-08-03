@@ -72,6 +72,17 @@ grep -q 'BLOCKED_NON_PORTABLE_PROD_IMAGE_REFERENCE' "${ROOT}/scripts/promote-bac
   && pass "promote script blocks non-portable refs" \
   || fail "promote portable guard"
 
+# Fork-first: Applications never hard-code canonical repo
+! grep -q 'https://github.com/Lindagh1/packmate-agent.git' \
+    "${ROOT}/argocd/application-packmate-lab.yaml" \
+    "${ROOT}/argocd/application-packmate-prod.yaml" \
+  && pass "Application manifests do not hard-code canonical repo" \
+  || fail "Application manifests must use __GIT_REPO_URL__"
+
+grep -q 'BLOCKED_CANONICAL_REPOSITORY_PROMOTION' "${ROOT}/scripts/lib/fork-safety.sh" \
+  && pass "fork-safety blocks canonical promotion" \
+  || fail "fork-safety blocks canonical promotion"
+
 # Pipeline has publish-candidate
 grep -q 'name: publish-candidate' "${ROOT}/.tekton/lab/packmate-ci.yaml.tpl" \
   && pass "Pipeline includes publish-candidate" \
