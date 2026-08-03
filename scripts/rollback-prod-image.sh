@@ -10,15 +10,27 @@
 #   scripts/rollback-prod-image.sh
 #   scripts/rollback-prod-image.sh --create-pr
 #
+# Env:
+#   GIT_REPO_URL / PROMOTION_BASE_BRANCH / ALLOW_CANONICAL_REPO_PROMOTION
+#   (same fork-first rules as promote-backend-image.sh)
+#
+# Never creates git tags or GitHub Releases. Never opens a PR into the canonical
+# upstream unless ALLOW_CANONICAL_REPO_PROMOTION=true. Never patches the PROD
+# Deployment directly.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/fork-safety.sh"
+packmate_load_fork_config "${ROOT}"
+
 OVERLAY_REL="deploy/overlays/prod/kustomization.yaml"
 OVERLAY="${ROOT}/${OVERLAY_REL}"
 TARGET_IMAGE_KEY="quay.io/example/packmate-backend"
-BASE_BRANCH="packmate-v2"
+BASE_BRANCH="${PROMOTION_BASE_BRANCH:-packmate-v2}"
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
@@ -119,6 +131,15 @@ SHORT="${SHORT:0:12}"
 BRANCH="rollback/backend-${SHORT}"
 
 # ---------------------------------------------------------------------------
+# Fork safety (before branch / commit / push / PR)
+# ---------------------------------------------------------------------------
+log "=== Fork-first rollback safety ==="
+packmate_assert_origin_not_canonical || exit 1
+packmate_assert_promotion_repo_allowed || exit 1
+packmate_assert_pr_base_in_fork "${BASE_BRANCH}" || exit 1
+log "OK: rollback target fork=$(packmate_normalize_github_owner_repo "$(packmate_writable_repo_url)") base=${BASE_BRANCH}"
+
+# ---------------------------------------------------------------------------
 # Branch, edit, diff, commit
 # ---------------------------------------------------------------------------
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -196,9 +217,9 @@ log "OK: committed on branch ${BRANCH} (no push to ${BASE_BRANCH})"
 github_compare_url() {
   local branch="$1"
   local remote_url repo_path
-  remote_url="$(git config --get remote.origin.url || true)"
+  remote_url="$(packmate_writable_repo_url 2>/dev/null || git config --get remote.origin.url || true)"
   [[ -n "${remote_url}" ]] || return 0
-  repo_path="$(printf '%s' "${remote_url}" | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')"
+  repo_path="$(packmate_normalize_github_owner_repo "${remote_url}" 2>/dev/null || true)"
   [[ -n "${repo_path}" ]] || return 0
   printf 'https://github.com/%s/compare/%s...%s?expand=1\n' "${repo_path}" "${BASE_BRANCH}" "${branch}"
 }
@@ -242,6 +263,8 @@ This script never touches the cluster — Argo CD Application \`packmate-prod\` 
 manual Sync after merge (prune=false, selfHeal=false).
 EOF
 
+FORK_REPO="$(packmate_normalize_github_owner_repo "$(packmate_writable_repo_url)")"
+
 if [[ "${CREATE_PR}" == "true" ]]; then
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     if [[ "${PUSHED}" != "true" ]]; then
@@ -249,12 +272,14 @@ if [[ "${CREATE_PR}" == "true" ]]; then
       print_manual_push_instructions "${BRANCH}"
       exit 0
     fi
+    packmate_assert_pr_base_in_fork "${BASE_BRANCH}" || exit 1
     PR_URL="$(gh pr create \
+      --repo "${FORK_REPO}" \
       --base "${BASE_BRANCH}" \
       --head "${BRANCH}" \
       --title "Rollback Packmate backend to ${SHORT}" \
       --body-file "${PR_BODY_FILE}")"
-    log "OK: opened PR ${PR_URL}"
+    log "OK: opened PR ${PR_URL} (fork ${FORK_REPO}: ${BRANCH} → ${BASE_BRANCH})"
   else
     warn "gh not authenticated — cannot create PR automatically"
     print_manual_push_instructions "${BRANCH}"
@@ -263,7 +288,7 @@ else
   if [[ "${PUSHED}" != "true" ]]; then
     print_manual_push_instructions "${BRANCH}"
   else
-    log "Branch pushed. Open a PR to ${BASE_BRANCH} when ready:"
+    log "Branch pushed to fork. Open a PR to ${BASE_BRANCH} in ${FORK_REPO} when ready:"
     github_compare_url "${BRANCH}"
   fi
 fi

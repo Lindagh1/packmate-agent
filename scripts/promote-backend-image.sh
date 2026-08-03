@@ -15,22 +15,32 @@
 #   --pipelinerun NAME    Tekton PipelineRun to read results from (packmate-ci)
 #   --namespace NS        Namespace of the PipelineRun / ImageStream (default: packmate-lab)
 #   --threshold VALUE     Minimum AI quality score (default: 0.90)
-#   --create-pr           Open a PR to packmate-v2 via `gh` after commit+push
+#   --create-pr           Open a PR to PROMOTION_BASE_BRANCH in the fork via `gh` after commit+push
 #   --merge-pr            Merge the PR immediately — automated Cursor validation ONLY, default off
 #   -h|--help             Show usage
 #
 # Env overrides:
 #   IMAGE_NAME             Registry path of the backend image (default derived from --namespace)
+#   GIT_REPO_URL           Writable fork URL (required; must not be canonical upstream)
+#   PROMOTION_BASE_BRANCH  PR base inside the fork (default: packmate-v2)
+#   ALLOW_CANONICAL_REPO_PROMOTION  Instructor-only override (default: false)
+#
+# Never creates git tags or GitHub Releases. Never opens a PR into Lindagh1/packmate-agent
+# unless ALLOW_CANONICAL_REPO_PROMOTION=true.
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/fork-safety.sh"
+packmate_load_fork_config "${ROOT}"
+
 OVERLAY_REL="deploy/overlays/prod/kustomization.yaml"
 OVERLAY="${ROOT}/${OVERLAY_REL}"
 TARGET_IMAGE_KEY="quay.io/example/packmate-backend"
-BASE_BRANCH="packmate-v2"
+BASE_BRANCH="${PROMOTION_BASE_BRANCH:-packmate-v2}"
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
@@ -306,11 +316,22 @@ PY
 github_compare_url() {
   local branch="$1"
   local remote_url repo_path
-  remote_url="$(git config --get remote.origin.url || true)"
+  remote_url="$(packmate_writable_repo_url 2>/dev/null || git config --get remote.origin.url || true)"
   [[ -n "${remote_url}" ]] || return 0
-  repo_path="$(printf '%s' "${remote_url}" | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')"
+  repo_path="$(packmate_normalize_github_owner_repo "${remote_url}" 2>/dev/null || true)"
   [[ -n "${repo_path}" ]] || return 0
   printf 'https://github.com/%s/compare/%s...%s?expand=1\n' "${repo_path}" "${BASE_BRANCH}" "${branch}"
+}
+
+assert_fork_promotion_safe() {
+  log "=== Fork-first promotion safety ==="
+  packmate_assert_origin_not_canonical || exit 1
+  packmate_assert_promotion_repo_allowed || exit 1
+  packmate_assert_pr_base_in_fork "${BASE_BRANCH}" || exit 1
+  local writable_norm
+  writable_norm="$(packmate_normalize_github_owner_repo "$(packmate_writable_repo_url)")"
+  log "OK: promotion target fork=${writable_norm} base=${BASE_BRANCH}"
+  log "OK: PR will be fork branch → fork ${BASE_BRANCH} (not canonical upstream)"
 }
 
 print_manual_push_instructions() {
@@ -434,6 +455,11 @@ if [[ "${PROMO_KIND}" == "legacy" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Fork safety (before branch / commit / push / PR)
+# ---------------------------------------------------------------------------
+assert_fork_promotion_safe
+
+# ---------------------------------------------------------------------------
 # Branch, edit, diff, commit
 # ---------------------------------------------------------------------------
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -515,6 +541,8 @@ rollback PR the same way. Argo CD Application \`packmate-prod\` still requires a
 after merge (prune=false, selfHeal=false).
 EOF
 
+FORK_REPO="$(packmate_normalize_github_owner_repo "$(packmate_writable_repo_url)")"
+
 if [[ "${CREATE_PR}" == "true" ]]; then
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     if [[ "${PUSHED}" != "true" ]]; then
@@ -522,16 +550,19 @@ if [[ "${CREATE_PR}" == "true" ]]; then
       print_manual_push_instructions "${BRANCH}"
       exit 0
     fi
+    # PR must stay inside the fork: head branch → PROMOTION_BASE_BRANCH on the same repo
+    packmate_assert_pr_base_in_fork "${BASE_BRANCH}" || exit 1
     PR_URL="$(gh pr create \
+      --repo "${FORK_REPO}" \
       --base "${BASE_BRANCH}" \
       --head "${BRANCH}" \
       --title "Promote validated Packmate backend ${SHORT}" \
       --body-file "${PR_BODY_FILE}")"
-    log "OK: opened PR ${PR_URL}"
+    log "OK: opened PR ${PR_URL} (fork ${FORK_REPO}: ${BRANCH} → ${BASE_BRANCH})"
 
     if [[ "${MERGE_PR}" == "true" ]]; then
       warn "--merge-pr set: merging PR automatically (automated Cursor validation mode only)"
-      gh pr merge "${BRANCH}" --merge --delete-branch=false \
+      gh pr merge --repo "${FORK_REPO}" "${BRANCH}" --merge --delete-branch=false \
         || warn "automatic PR merge failed — merge manually: ${PR_URL}"
     fi
   else
@@ -545,7 +576,7 @@ else
   if [[ "${PUSHED}" != "true" ]]; then
     print_manual_push_instructions "${BRANCH}"
   else
-    log "Branch pushed. Open a PR to ${BASE_BRANCH} when ready:"
+    log "Branch pushed to fork. Open a PR to ${BASE_BRANCH} in ${FORK_REPO} when ready:"
     github_compare_url "${BRANCH}"
   fi
 fi
