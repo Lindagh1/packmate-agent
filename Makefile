@@ -9,7 +9,9 @@ SHELL := /bin/bash
 	configure-git setup-workbench-repository security-check \
 	check-gitops-prerequisites install-gitops-operator wait-for-gitops instructor-setup \
 	configure-promotion-registry verify-promotion-registry \
-	verify-resource-ownership rotate-prod-llm-secret verify-demo-fork
+	verify-resource-ownership rotate-prod-llm-secret verify-demo-fork \
+	verify-demo-fork-live verify-github-write-readiness discover-packmate-resources \
+	reset-lab acceptance-static acceptance-prebootstrap acceptance-postbootstrap
 
 help:
 	@echo "Packmate lab targets:"
@@ -29,8 +31,13 @@ help:
 	@echo "  make configure-argocd-rbac  SSO group + AppProject participant role"
 	@echo "  make verify / verify-dev    DEV readiness (compat)"
 	@echo "  make verify-prod            PROD readiness after Argo Sync"
-	@echo "  make verify-demo-fork       Confirm origin/GIT_REPO_URL are a fork (not canonical)"
-	@echo "  make verify-gitops          AppProject/Applications/RBAC checks"
+	@echo "  make verify-demo-fork       Pre-bootstrap fork remotes/config (Argo INFO only)"
+	@echo "  make verify-demo-fork-live  Post-bootstrap: Applications must follow the fork"
+	@echo "  make verify-github-write-readiness  GitHub read vs write readiness"
+	@echo "  make discover-packmate-resources  Read-only residue discovery"
+	@echo "  make reset-lab              Dry-run Packmate reset (needs CONFIRM_… to delete)"
+	@echo "  make acceptance-static      Offline clean-room acceptance"
+	@echo "  make verify-gitops          AppProject/Applications/RBAC + live fork checks"
 	@echo "  make validate-prod          Static PROD overlay checks"
 	@echo "  make verify-python-deps     RHOAI mirror dependency compatibility (in-cluster)"
 	@echo "  make resolve-pipeline-python-image  Resolve openshift/python:3.12-ubi9 digest"
@@ -68,8 +75,30 @@ verify-prod:
 verify-demo-fork:
 	@bash "$(ROOT)/scripts/verify-demo-fork.sh"
 
+verify-demo-fork-live:
+	@bash "$(ROOT)/scripts/verify-demo-fork-live.sh"
+
+verify-github-write-readiness:
+	@bash "$(ROOT)/scripts/verify-github-write-readiness.sh"
+
+discover-packmate-resources:
+	@bash "$(ROOT)/scripts/discover-packmate-resources.sh"
+
+reset-lab:
+	@bash "$(ROOT)/scripts/reset-packmate-lab.sh"
+
+acceptance-static:
+	@bash "$(ROOT)/scripts/acceptance/acceptance-static.sh"
+
+acceptance-prebootstrap:
+	@bash "$(ROOT)/scripts/acceptance/acceptance-prebootstrap.sh"
+
+acceptance-postbootstrap:
+	@bash "$(ROOT)/scripts/acceptance/acceptance-postbootstrap.sh"
+
 verify-gitops:
 	@bash "$(ROOT)/scripts/verify-gitops.sh"
+	@bash "$(ROOT)/scripts/verify-demo-fork-live.sh"
 
 validate-prod:
 	@bash "$(ROOT)/scripts/validate-prod-overlay.sh"
@@ -110,7 +139,8 @@ test:
 	bash "$(ROOT)/scripts/tests/test-gitops-portable-prod.sh"; \
 	bash "$(ROOT)/scripts/tests/test-bootstrap-ownership-secrets.sh"; \
 	bash "$(ROOT)/scripts/tests/test-kustomize-replicas-recovery.sh"; \
-	bash "$(ROOT)/scripts/tests/test-fork-first-workshop.sh"
+	bash "$(ROOT)/scripts/tests/test-fork-first-workshop.sh"; \
+	bash "$(ROOT)/scripts/tests/test-deep-audit-hardening.sh"
 
 render:
 	@bash "$(ROOT)/scripts/render-manifests.sh"

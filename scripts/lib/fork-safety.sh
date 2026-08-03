@@ -166,18 +166,25 @@ packmate_assert_pr_base_in_fork() {
   return 0
 }
 
-# Full demo-fork verification used by make verify-demo-fork.
-# Args: optional --require-argo (check live Applications when oc available)
+# Mode:
+#   prebootstrap (default) — local Git/fork checks; live Argo drift is INFO/ACTION only
+#   live / --require-argo  — Applications must already follow the participant fork
 packmate_verify_demo_fork() {
-  local require_argo="false"
+  local mode="prebootstrap"
   local fail=0
-  local pass_msg
-  pass_msg() { printf 'PASS  %s\n' "$*"; }
-  fail_msg() { printf 'FAIL  %s\n' "$*"; fail=$((fail + 1)); }
+  local pass_msg fail_msg
+  pass_msg() { printf 'PASS    %s\n' "$*"; }
+  fail_msg() {
+    printf 'FAIL    %s\n' "$1"
+    [[ -n "${2:-}" ]] && printf 'DETAIL  %s\n' "$2"
+    [[ -n "${3:-}" ]] && printf 'ACTION  %s\n' "$3"
+    fail=$((fail + 1))
+  }
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --require-argo) require_argo="true"; shift ;;
+      --require-argo|--live|live) mode="live"; shift ;;
+      --prebootstrap|prebootstrap) mode="prebootstrap"; shift ;;
       *) shift ;;
     esac
   done
@@ -275,60 +282,116 @@ EOF
     fail_msg "Promotion base branch exists in the fork"
   fi
 
-  # Argo CD source checks (best-effort unless --require-argo)
+  # Upstream pushURL must not allow pushes to canonical during demos
+  local upstream_push
+  upstream_push="$(git config --get remote.upstream.pushurl 2>/dev/null || true)"
+  if [[ -n "${upstream_push}" ]]; then
+    if packmate_is_canonical_owner_repo "${upstream_push}"; then
+      fail_msg "upstream push URL must not target canonical" \
+        "remote.upstream.pushurl=${upstream_push}" \
+        "Run: git remote set-url --push upstream DISABLED"
+    else
+      pass_msg "upstream push URL is not canonical"
+    fi
+  else
+    # Prefer disabled push: empty pushurl or matching fetch-only convention
+    if [[ -n "${upstream_url}" ]]; then
+      printf 'INFO    upstream push URL unset (fetch-only is recommended; disable with: git remote set-url --push upstream DISABLED)\n'
+    fi
+  fi
+
+  # Argo CD: prebootstrap = INFO/ACTION only; live = hard requirements
   local argo_ns="${ARGOCD_NAMESPACE:-openshift-gitops}"
-  local lab_repo prod_repo lab_rev prod_rev
+  local lab_repo prod_repo lab_rev prod_rev lab_sync lab_health prod_auto
+  local lab_norm prod_norm expected_norm
+  expected_norm="$(packmate_normalize_github_owner_repo "${writable_url:-}" 2>/dev/null || true)"
+
   if command -v oc >/dev/null 2>&1 && oc whoami >/dev/null 2>&1 \
     && oc -n "${argo_ns}" get application.argoproj.io packmate-lab >/dev/null 2>&1; then
     lab_repo="$(oc -n "${argo_ns}" get application.argoproj.io packmate-lab -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)"
     prod_repo="$(oc -n "${argo_ns}" get application.argoproj.io packmate-prod -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)"
     lab_rev="$(oc -n "${argo_ns}" get application.argoproj.io packmate-lab -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
     prod_rev="$(oc -n "${argo_ns}" get application.argoproj.io packmate-prod -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
-    local lab_norm prod_norm expected_norm
-    expected_norm="$(packmate_normalize_github_owner_repo "${writable_url:-}" 2>/dev/null || true)"
+    lab_sync="$(oc -n "${argo_ns}" get application.argoproj.io packmate-lab -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+    lab_health="$(oc -n "${argo_ns}" get application.argoproj.io packmate-lab -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+    prod_auto="$(oc -n "${argo_ns}" get application.argoproj.io packmate-prod -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null || true)"
     lab_norm="$(packmate_normalize_github_owner_repo "${lab_repo}" 2>/dev/null || true)"
     prod_norm="$(packmate_normalize_github_owner_repo "${prod_repo}" 2>/dev/null || true)"
-    if [[ -n "${expected_norm}" && "${lab_norm}" == "${expected_norm}" ]]; then
+
+    if [[ "${mode}" == "live" ]]; then
+      if [[ -n "${expected_norm}" && "${lab_norm}" == "${expected_norm}" ]]; then
+        pass_msg "DEV Application follows participant fork"
+      else
+        fail_msg "DEV Application follows participant fork" \
+          "repoURL=${lab_repo} expected=${writable_url}" \
+          "Re-run make bootstrap / make prepare-prod with GIT_REPO_URL set to the fork"
+      fi
+      if [[ -n "${expected_norm}" && "${prod_norm}" == "${expected_norm}" ]]; then
+        pass_msg "PROD Application follows participant fork"
+      else
+        fail_msg "PROD Application follows participant fork" \
+          "repoURL=${prod_repo} expected=${writable_url}" \
+          "Re-run make bootstrap / make prepare-prod with GIT_REPO_URL set to the fork"
+      fi
+      if [[ "${lab_rev}" == "${GIT_REVISION}" && "${prod_rev}" == "${GIT_REVISION}" ]]; then
+        pass_msg "Both Applications use configured revision"
+      else
+        fail_msg "Both Applications use configured revision" \
+          "lab=${lab_rev} prod=${prod_rev} expected=${GIT_REVISION}" \
+          "Set GIT_REVISION and re-apply Applications via make bootstrap"
+      fi
+      if [[ "${lab_sync}" == "Synced" && "${lab_health}" == "Healthy" ]]; then
+        pass_msg "DEV is Synced/Healthy"
+      else
+        fail_msg "DEV is Synced/Healthy" \
+          "sync=${lab_sync} health=${lab_health}" \
+          "Wait for Argo CD or run: bash scripts/wait-for-argocd-app.sh packmate-lab"
+      fi
+      if [[ -z "${prod_auto}" ]]; then
+        pass_msg "PROD remains manual sync"
+      else
+        fail_msg "PROD remains manual sync" \
+          "automated syncPolicy is set" \
+          "Patch Application/packmate-prod to remove automated sync"
+      fi
       pass_msg "Argo CD source repository uses the fork"
-      pass_msg "DEV Application follows participant fork"
     else
-      fail_msg "DEV Application follows participant fork (repoURL=${lab_repo})"
-    fi
-    if [[ -n "${expected_norm}" && "${prod_norm}" == "${expected_norm}" ]]; then
-      pass_msg "PROD Application follows participant fork"
-    else
-      fail_msg "PROD Application follows participant fork (repoURL=${prod_repo})"
-    fi
-    if [[ "${lab_rev}" == "${GIT_REVISION}" && "${prod_rev}" == "${GIT_REVISION}" ]]; then
-      pass_msg "Both Applications use configured revision"
-    else
-      fail_msg "Both Applications use configured revision (lab=${lab_rev} prod=${prod_rev} expected=${GIT_REVISION})"
+      # prebootstrap: never fail solely because stale Apps still point upstream
+      if [[ -n "${expected_norm}" && "${lab_norm}" == "${expected_norm}" && "${prod_norm}" == "${expected_norm}" ]]; then
+        pass_msg "Live Applications already follow participant fork"
+      else
+        printf 'INFO    Live Argo CD Applications require migration to the fork\n'
+        printf 'DETAIL  packmate-lab repoURL=%s revision=%s\n' "${lab_repo}" "${lab_rev}"
+        printf 'DETAIL  packmate-prod repoURL=%s revision=%s\n' "${prod_repo}" "${prod_rev}"
+        printf 'ACTION  Continue with make preflight && make bootstrap (migrates Applications to GIT_REPO_URL)\n'
+        printf 'ACTION  After bootstrap run: make verify-demo-fork-live\n'
+      fi
+      # Templates must still be fork-configurable
+      if grep -q '__GIT_REPO_URL__' "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-lab.yaml" 2>/dev/null \
+        && grep -q '__GIT_REPO_URL__' "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-prod.yaml" 2>/dev/null; then
+        pass_msg "Application manifests use GIT_REPO_URL placeholders (not hard-coded canonical)"
+      fi
     fi
   else
-    if [[ "${require_argo}" == "true" ]]; then
-      fail_msg "Argo CD source repository uses the fork"
-      fail_msg "DEV Application follows participant fork"
-      fail_msg "PROD Application follows participant fork"
-      fail_msg "Both Applications use configured revision"
+    if [[ "${mode}" == "live" ]]; then
+      fail_msg "Argo CD Applications exist and follow the fork" \
+        "oc unavailable, auth failed, or Applications missing" \
+        "Authenticate with oc, then run make bootstrap"
     else
-      printf 'INFO  Argo CD Applications not checked (oc unavailable or apps missing)\n'
-      # Static template check: Applications use placeholders, not hard-coded canonical URL
+      printf 'INFO    Argo CD Applications not present or oc unavailable (expected before bootstrap)\n'
       if grep -q '__GIT_REPO_URL__' "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-lab.yaml" 2>/dev/null \
         && grep -q '__GIT_REPO_URL__' "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-prod.yaml" 2>/dev/null \
         && ! grep -q 'https://github.com/Lindagh1/packmate-agent.git' \
           "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-lab.yaml" \
           "${PACKMATE_FORK_ROOT:-.}/argocd/application-packmate-prod.yaml" 2>/dev/null; then
-        pass_msg "Argo CD source repository uses the fork"
-        pass_msg "DEV Application follows participant fork"
-        pass_msg "PROD Application follows participant fork"
-        pass_msg "Both Applications use configured revision"
+        pass_msg "Application manifests use GIT_REPO_URL placeholders (not hard-coded canonical)"
       fi
     fi
   fi
 
   if [[ "${fail}" -eq 0 ]]; then
     if [[ "${ALLOW_CANONICAL_REPO_PROMOTION}" == "true" ]]; then
-      printf 'WARN  Demo promotion override enabled — canonical upstream may be modified\n'
+      printf 'WARN    Demo promotion override enabled — canonical upstream may be modified\n'
     else
       pass_msg "Demo promotion cannot modify canonical upstream"
       pass_msg "Canonical upstream remains unchanged by demo promotion"
@@ -336,4 +399,8 @@ EOF
   fi
 
   return "${fail}"
+}
+
+packmate_verify_demo_fork_live() {
+  packmate_verify_demo_fork --live "$@"
 }

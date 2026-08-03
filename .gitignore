@@ -20,5 +20,7 @@ config/sandbox.env
 .generated/**
 !.generated/tekton/
 !.generated/tekton/.gitkeep
+!.generated/acceptance/
+!.generated/acceptance/.gitkeep
 .tekton/lab/generated/
 .tekton/lab/packmate-ci.rendered.yaml
