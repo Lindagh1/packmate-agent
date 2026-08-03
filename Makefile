@@ -104,7 +104,8 @@ test:
 	  bash "$(ROOT)/scripts/tests/test-pipeline-portability.sh"; \
 	  bash "$(ROOT)/scripts/tests/test-workbench-repository-setup.sh"; \
 	bash "$(ROOT)/scripts/tests/test-gitops-portable-prod.sh"; \
-	bash "$(ROOT)/scripts/tests/test-bootstrap-ownership-secrets.sh"
+	bash "$(ROOT)/scripts/tests/test-bootstrap-ownership-secrets.sh"; \
+	bash "$(ROOT)/scripts/tests/test-kustomize-replicas-recovery.sh"
 
 render:
 	@bash "$(ROOT)/scripts/render-manifests.sh"

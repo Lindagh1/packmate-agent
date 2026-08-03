@@ -14,6 +14,34 @@
 | `EVALHUB_OPTIONAL_NOT_CONFIGURED` | Expected unless EvalHub annex is prepared |
 | Unquoted spaces in `sandbox.env` | Quote `PACKMATE_MODEL_DISPLAY_NAME` / `PACKMATE_MODEL_USE_CASE` (see example file) |
 
+## unable to parse SM or JSON patch from replicas-patch.yaml
+
+Symptom:
+
+```text
+error: trouble configuring builtin PatchTransformer with config:
+path: replicas-patch.yaml
+unable to parse SM or JSON patch
+```
+
+Root cause: one Kustomize `patches:` entry referenced a file containing **several**
+strategic merge patch documents (`---`). Newer Kustomize / Argo CD builds reject
+that pattern.
+
+Fix: use the native Kustomize `replicas:` transformer (and split other multi-doc
+patches into one file per resource, or use `labels:`). Do **not**
+`oc apply -k deploy/overlays/dev` or `prod` — Argo CD owns those manifests.
+
+Downstream consequences when preflight/bootstrap cannot render overlays:
+
+- Application/packmate-lab may stay OutOfSync / Missing
+- DEV Deployments and Routes absent
+- Pipeline/packmate-ci and custom model endpoint not created
+- Playground assets not ready
+
+Recover with `make preflight` → `make bootstrap` after the overlay fix is on the
+Git revision Argo CD tracks. Do not manually apply the overlays.
+
 ## Workbench — `fatal: not a git repository`
 
 Symptom:
