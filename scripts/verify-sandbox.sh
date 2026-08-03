@@ -298,9 +298,15 @@ if oc get application.argoproj.io packmate-lab -n openshift-gitops >/dev/null 2>
       "${ROOT}/scripts/bootstrap-sandbox.sh"; then
     pass "Bootstrap does not directly apply DEV overlay"
     pass "DEV runtime resources owned by Argo CD"
-    pass "DEV remained Synced after idempotent bootstrap"
   else
     fail "Bootstrap does not directly apply DEV overlay"
+  fi
+  # Live-state only: never PASS idempotent Synced when Application is OutOfSync/Missing.
+  if [[ "${LAB_SYNC}" == "Synced" && "${LAB_HEALTH}" == "Healthy" ]]; then
+    pass "DEV remained Synced after idempotent bootstrap"
+  else
+    fail "DEV is not currently Synced and Healthy"
+    info "sync=${LAB_SYNC:-?} health=${LAB_HEALTH:-?}"
   fi
 elif oc get crd applications.argoproj.io >/dev/null 2>&1; then
   info "GitOps CRD present but Application not applied"
