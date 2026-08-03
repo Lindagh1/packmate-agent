@@ -7,8 +7,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 [[ -f "${ROOT}/config/sandbox.env" ]] && set -a && source "${ROOT}/config/sandbox.env" && set +a || true
 
-GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/Lindagh1/packmate-agent.git}"
+GIT_REPO_URL="${GIT_REPO_URL:-}"
 GIT_REVISION="${GIT_REVISION:-packmate-v2}"
+CANONICAL_GIT_REPO_URL="${CANONICAL_GIT_REPO_URL:-https://github.com/Lindagh1/packmate-agent.git}"
 PACKMATE_ARGO_GROUP="${PACKMATE_ARGO_GROUP:-packmate-lab-users}"
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
 PACKMATE_LAB_NAMESPACE="${PACKMATE_LAB_NAMESPACE:-${PACKMATE_NAMESPACE:-packmate-lab}}"
@@ -16,6 +17,16 @@ PACKMATE_PROD_NAMESPACE="${PACKMATE_PROD_NAMESPACE:-packmate-prod}"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ -n "${GIT_REPO_URL}" ]] || die "GIT_REPO_URL must be set to your fork (see config/sandbox.env.example)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/fork-safety.sh"
+if packmate_is_canonical_owner_repo "${GIT_REPO_URL}"; then
+  if [[ "${ALLOW_CANONICAL_REPO_PROMOTION:-false}" != "true" ]]; then
+    die "GIT_REPO_URL points at canonical upstream — set it to your fork URL for Argo CD Applications"
+  fi
+  log "WARN: Argo CD will track canonical upstream (ALLOW_CANONICAL_REPO_PROMOTION=true)"
+fi
 
 oc get crd applications.argoproj.io >/dev/null 2>&1 || die "Argo CD Application CRD missing — run make check-gitops-prerequisites"
 

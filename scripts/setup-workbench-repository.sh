@@ -4,12 +4,17 @@
 # Never deletes or overwrites files already present in /opt/app-root/src.
 set -euo pipefail
 
-PACKMATE_REPOSITORY_URL="${PACKMATE_REPOSITORY_URL:-https://github.com/Lindagh1/packmate-agent.git}"
-PACKMATE_REPOSITORY_BRANCH="${PACKMATE_REPOSITORY_BRANCH:-packmate-v2}"
+# Prefer participant fork URL from env / sandbox config. Canonical upstream is for
+# reference only — do not clone Lindagh1/packmate-agent as origin for workshops.
+PACKMATE_REPOSITORY_URL="${PACKMATE_REPOSITORY_URL:-${GIT_REPO_URL:-}}"
+PACKMATE_REPOSITORY_BRANCH="${PACKMATE_REPOSITORY_BRANCH:-${GIT_REVISION:-packmate-v2}}"
 PACKMATE_REPOSITORY_DIRECTORY="${PACKMATE_REPOSITORY_DIRECTORY:-/opt/app-root/src/packmate-agent}"
+PACKMATE_CANONICAL_REPOSITORY_URL="${PACKMATE_CANONICAL_REPOSITORY_URL:-${CANONICAL_GIT_REPO_URL:-https://github.com/Lindagh1/packmate-agent.git}}"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ -n "${PACKMATE_REPOSITORY_URL}" ]] || die "Set PACKMATE_REPOSITORY_URL or GIT_REPO_URL to your GitHub fork (not Lindagh1/packmate-agent)"
 
 normalize_git_url() {
   local u="$1"

@@ -68,7 +68,8 @@ spec:
   params:
     - name: git-url
       type: string
-      default: https://github.com/Lindagh1/packmate-agent.git
+      # Writable fork URL — override in PipelineRun; do not use canonical Lindagh1/packmate-agent for demos
+      default: https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git
     - name: git-revision
       type: string
       default: packmate-v2

@@ -22,7 +22,8 @@ spec:
     serviceAccountName: packmate-pipeline
   params:
     - name: git-url
-      value: https://github.com/Lindagh1/packmate-agent.git
+      # Participant/instructor fork URL (not Lindagh1/packmate-agent)
+      value: https://github.com/YOUR_GITHUB_USERNAME/packmate-agent.git
     - name: git-revision
       value: packmate-v2
     - name: quality-threshold

@@ -47,15 +47,24 @@ oc whoami >/dev/null 2>&1 || die "not logged in to OpenShift (oc whoami failed)"
 
 PACKMATE_LAB_NAMESPACE="${PACKMATE_LAB_NAMESPACE:-packmate-lab}"
 PACKMATE_PROD_NAMESPACE="${PACKMATE_PROD_NAMESPACE:-packmate-prod}"
-GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/Lindagh1/packmate-agent.git}"
+GIT_REPO_URL="${GIT_REPO_URL:-}"
 GIT_REVISION="${GIT_REVISION:-packmate-v2}"
 PACKMATE_ARGO_GROUP="${PACKMATE_ARGO_GROUP:-packmate-lab-users}"
 CREATE_ARGOCD_RBAC="${CREATE_ARGOCD_RBAC:-false}"
 ARGOCD_RBAC_FALLBACK="${ARGOCD_RBAC_FALLBACK:-false}"
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
 
+[[ -n "${GIT_REPO_URL}" ]] || die "GIT_REPO_URL must be set to your fork URL (config/sandbox.env)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/fork-safety.sh"
+if packmate_is_canonical_owner_repo "${GIT_REPO_URL}" \
+  && [[ "${ALLOW_CANONICAL_REPO_PROMOTION:-false}" != "true" ]]; then
+  die "GIT_REPO_URL must be your GitHub fork, not Lindagh1/packmate-agent"
+fi
+
 log "=== Packmate prepare-prod ==="
 log "lab_namespace=${PACKMATE_LAB_NAMESPACE} prod_namespace=${PACKMATE_PROD_NAMESPACE}"
+log "git_repo_url=${GIT_REPO_URL} git_revision=${GIT_REVISION}"
 
 # ---------------------------------------------------------------------------
 # 1) Namespace packmate-prod — labels: packmate.io/environment=prod only.
