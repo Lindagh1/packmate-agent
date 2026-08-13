@@ -11,7 +11,7 @@ packmate_load_config() {
   local cfg="${PACKMATE_CONFIG:-${root}/config/sandbox.env}"
   if [[ ! -f "${cfg}" ]]; then
     printf 'ERROR: configuration file missing: %s\n' "${cfg}" >&2
-    printf 'Copy config/sandbox.env.example to config/sandbox.env and set image refs.\n' >&2
+    printf 'Run make configure-participant from the repository root.\n' >&2
     return 1
   fi
   # shellcheck disable=SC1090
@@ -51,6 +51,7 @@ packmate_load_config() {
   PACKMATE_MODEL_USE_CASE="${PACKMATE_MODEL_USE_CASE:-Packmate travel planning, weather and baggage tool calling}"
   PACKMATE_ARGO_GROUP="${PACKMATE_ARGO_GROUP:-packmate-lab-users}"
   PACKMATE_PARTICIPANT_USER="${PACKMATE_PARTICIPANT_USER:-}"
+  PACKMATE_PIPELINE_SA="${PACKMATE_PIPELINE_SA:-packmate-pipeline}"
   DISABLE_ARGOCD_LOCAL_ADMIN="${DISABLE_ARGOCD_LOCAL_ADMIN:-false}"
   export PACKMATE_NAMESPACE PACKMATE_NS PACKMATE_DEV_NAMESPACE PACKMATE_PROD_NAMESPACE
   export MODEL_NAMESPACE MODEL_SERVICE MODEL_ID
@@ -61,7 +62,7 @@ packmate_load_config() {
   export LLM_BASE_URL LLM_MODEL LITELLM_API_KEY
   export BACKEND_IMAGE FRONTEND_IMAGE WEATHER_MCP_IMAGE BAGGAGE_POLICY_MCP_IMAGE
   export PACKMATE_MODEL_DISPLAY_NAME PACKMATE_MODEL_USE_CASE MODEL_TOKEN
-  export PACKMATE_ARGO_GROUP PACKMATE_PARTICIPANT_USER DISABLE_ARGOCD_LOCAL_ADMIN
+  export PACKMATE_ARGO_GROUP PACKMATE_PARTICIPANT_USER PACKMATE_PIPELINE_SA DISABLE_ARGOCD_LOCAL_ADMIN
 }
 
 packmate_log() { printf '%s\n' "$*"; }
@@ -70,6 +71,23 @@ packmate_die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 packmate_require_oc() {
   command -v oc >/dev/null || packmate_die "oc CLI not found"
   oc whoami >/dev/null 2>&1 || packmate_die "not logged in to OpenShift (oc whoami failed)"
+}
+
+packmate_require_human_user() {
+  local user
+  user="$(oc whoami 2>/dev/null || true)"
+  [[ -n "${user}" ]] || packmate_die "BLOCKED_OPENSHIFT_AUTHENTICATION — run: oc login --web"
+  if [[ "${user}" == system:serviceaccount:* ]]; then
+    cat >&2 <<EOF
+BLOCKED_OPENSHIFT_SERVICE_ACCOUNT_IDENTITY
+DETAIL  oc is authenticated as ${user}
+ACTION  Run: oc logout
+ACTION  Run: oc login --web
+ACTION  Confirm your human sandbox username with: oc whoami
+EOF
+    return 1
+  fi
+  printf 'PASS  OpenShift human identity confirmed (%s)\n' "${user}"
 }
 
 packmate_api_has() {

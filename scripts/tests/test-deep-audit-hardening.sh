@@ -187,6 +187,13 @@ grep -q 'verify-demo-fork-live' "${ROOT}/Makefile" \
   && grep -q 'verify-github-write-readiness' "${ROOT}/Makefile" \
   && pass "Makefile targets wired" || fail "Makefile targets wired"
 
+grep -q 'scripts/test-frontend.sh' "${ROOT}/Makefile" \
+  && grep -q 'command -v npm' "${ROOT}/scripts/test-frontend.sh" \
+  && grep -q 'command -v podman' "${ROOT}/scripts/test-frontend.sh" \
+  && grep -q 'requires npm or Podman' "${ROOT}/scripts/test-frontend.sh" \
+  && pass "make test runs frontend validation or fails clearly" \
+  || fail "make test can silently skip frontend validation"
+
 # .generated ignored
 grep -q '\.generated' "${ROOT}/.gitignore" \
   && pass ".generated is gitignored" || fail ".generated must be gitignored"
