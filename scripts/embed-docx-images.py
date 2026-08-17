@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Convert file-linked DOCX images into embedded package parts."""
+"""Embed file-linked DOCX images and preserve their native aspect ratios."""
 
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import struct
 import tempfile
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -15,6 +16,8 @@ from pathlib import Path
 
 RELATIONSHIP_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 IMAGE_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+MAX_DRAWING_HEIGHT_EMU = 4_400_000
 
 
 def local_target(raw_target: str) -> Path:
@@ -25,6 +28,56 @@ def local_target(raw_target: str) -> Path:
     if not path.is_file():
         raise FileNotFoundError(f"linked DOCX image not found: {path}")
     return path
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    header = path.read_bytes()[:24]
+    if len(header) != 24 or header[:8] != PNG_SIGNATURE or header[12:16] != b"IHDR":
+        raise ValueError(f"expected a PNG screenshot: {path}")
+    width, height = struct.unpack(">II", header[16:24])
+    if width < 1 or height < 1:
+        raise ValueError(f"invalid PNG dimensions: {path}")
+    return width, height
+
+
+def preserve_drawing_aspect(document_xml: bytes, relationship_id: str, source: Path) -> bytes:
+    """Correct LibreOffice HTML-import extents without changing image pixels."""
+
+    link = f'r:link="{relationship_id}"'.encode()
+    inline_pattern = re.compile(rb"<wp:inline\b.*?</wp:inline>", flags=re.DOTALL)
+    matches = [match for match in inline_pattern.finditer(document_xml) if link in match.group(0)]
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected one inline drawing for {relationship_id}, found {len(matches)}"
+        )
+
+    match = matches[0]
+    drawing = match.group(0)
+    extent = re.search(rb'<wp:extent cx="(\d+)" cy="(\d+)"/>', drawing)
+    if extent is None:
+        raise ValueError(f"drawing extent missing for {relationship_id}")
+
+    width_px, height_px = png_size(source)
+    width_emu = int(extent.group(1))
+    height_emu = round(width_emu * height_px / width_px)
+    if height_emu > MAX_DRAWING_HEIGHT_EMU:
+        width_emu = round(width_emu * MAX_DRAWING_HEIGHT_EMU / height_emu)
+        height_emu = MAX_DRAWING_HEIGHT_EMU
+    drawing, wp_count = re.subn(
+        rb'<wp:extent cx="\d+" cy="\d+"/>',
+        f'<wp:extent cx="{width_emu}" cy="{height_emu}"/>'.encode(),
+        drawing,
+        count=1,
+    )
+    drawing, a_count = re.subn(
+        rb'<a:ext cx="\d+" cy="\d+"/>',
+        f'<a:ext cx="{width_emu}" cy="{height_emu}"/>'.encode(),
+        drawing,
+        count=1,
+    )
+    if wp_count != 1 or a_count != 1:
+        raise ValueError(f"could not update both drawing extents for {relationship_id}")
+    return document_xml[: match.start()] + drawing + document_xml[match.end() :]
 
 
 def embed_images(docx: Path) -> int:
@@ -61,7 +114,8 @@ def embed_images(docx: Path) -> int:
     if not linked:
         return 0
 
-    for relationship_id, _, _ in linked:
+    for relationship_id, source, _ in linked:
+        document_xml = preserve_drawing_aspect(document_xml, relationship_id, source)
         link = f'r:link="{relationship_id}"'.encode()
         embed = f'r:embed="{relationship_id}"'.encode()
         document_xml, replacements = re.subn(re.escape(link), embed, document_xml)

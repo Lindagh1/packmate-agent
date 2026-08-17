@@ -210,12 +210,12 @@ logs or screenshots.
 | Expected | `packmate-prod` serves the promoted backend on its own Route with no Workbench/Pipeline/Playground/custom endpoint in that namespace |
 | Validation | `make verify-prod` passes; PR diff limited to the backend image entry; Argo CD shows Prune/self-heal disabled |
 | Common issue | Argo CD `promoter` role not yet effective — participant must log out/in to Argo CD after being added to `packmate-lab-users` (see `docs/TROUBLESHOOTING.md`) |
-| Screenshot | `[Screenshot required: Pipeline successful]`, `[Screenshot required: AI quality gate PASS]`, `[Screenshot required: Candidate image digest]`, `[Screenshot required: Promotion pull request]`, `[Screenshot required: Argo CD OutOfSync]`, `[Screenshot required: Argo CD Synced and Healthy]`, `[Screenshot required: PROD Route]` (all defined in `docs/PARTICIPANT_GUIDE.md`) |
+| Participant evidence | PipelineRun name; seven succeeded tasks; 16 scenarios; PASS; score; threshold 0.90; full external GHCR digest; promotion pull request; Argo CD state transition; successful PROD result |
 
 **Live status (2026-08-13):** PipelineRun `packmate-ci-whbrq`, participant-fork
 PR #2, manual Argo CD Sync, exact-digest `make verify-prod`, and the PROD Rome
-Route scenario all passed. Only current authenticated Tekton/Argo CD UI captures
-remain manual.
+Route scenario all passed. Optional current authenticated Tekton/Argo CD UI
+captures remain a maintainer wishlist and are not participant-guide blockers.
 
 ---
 
@@ -227,19 +227,19 @@ remain manual.
 | Custom model endpoint | Automated by default (`CREATE_MODEL_CUSTOM_ENDPOINT=true`), DEV only — participants never Create endpoint |
 | Pipeline `packmate-ci` | Start from UI with a 2Gi VolumeClaimTemplate; do not auto-promote backend |
 | `packmate-prod` prep | Automated from bootstrap (`CREATE_PROD_NAMESPACE`/`CREATE_ARGOCD_APPLICATION`/`CREATE_ARGOCD_RBAC`, all default `true`) — namespace/Secret/RBAC/Argo objects only, no workload apply |
-| Promotion | `make promote PIPELINERUN=<name>` — Git pull request only, never a direct cluster edit |
+| Promotion | `make promote PIPELINERUN=packmate-ci-example` after replacing the example with the actual run name — Git pull request only, never a direct cluster edit |
 | Argo CD | Required for Modules 4, 8, and 9 — else `GITOPS_OPERATOR_REQUIRED` |
-| Screenshots | Nine classified placeholders remain; see `docs/SCREENSHOT_REUSE_AUDIT.md` |
+| Screenshots | Zero participant-visible empty screenshot boxes; see `docs/SCREENSHOT_REUSE_AUDIT.md` for retained and rejected evidence |
 
 ## Sign-off
 
 | Area | Status |
 |------|--------|
-| Workbench creation | Resulting Notebook/PVC/pod/code-server state validated; current list screenshot still required |
+| Workbench creation | Resulting Notebook/PVC/pod/code-server state validated; no screenshot is required in the participant guide |
 | Playground session | `MANUAL_REQUIRED` |
 | MCP ConfigMap registration | Applied on this cluster (instructor/admin) — still verify in UI |
 | Public DEV Route automated performance | See `CLUSTER_DEPLOYMENT_REPORT.md` |
-| PipelineRun validation | **PASS** — `packmate-ci-whbrq`; current graph/task screenshots still required |
+| PipelineRun validation | **PASS** — `packmate-ci-whbrq`; seven tasks, 16 scenarios, score 0.9559, threshold 0.90, and PASS recorded as text evidence |
 | Argo CD DEV | **PASS** — Synced/Healthy and fork-owned |
 | Promotion PR (Module 8) | **PASS** — participant-fork PR #2, exactly one PROD overlay file |
 | PROD Sync + Route (Module 9) | **PASS** — manual Sync, exact digest, Route/SSE/Rome scenario |

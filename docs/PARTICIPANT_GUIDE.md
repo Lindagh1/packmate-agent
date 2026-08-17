@@ -49,6 +49,7 @@ You need:
 - **REQUIRED RESULT** must be true before you continue.
 - **REQUIRED EVIDENCE** is what you should record for the workshop.
 - **STOP BEFORE CONTINUING** means the next module depends on the checkpoint.
+- **COMMAND PLACEHOLDERS:** Replace `YOUR_USERNAME` and `<pipelinerun-name>` with your own values; never type the angle brackets.
 
 ---
 
@@ -136,8 +137,6 @@ oc whoami
 
 **EXPECTED RESULT:** code-server opens and its Terminal menu is available.
 
-[Screenshot required: packmate-workbench Running and ready to open]
-
 ---
 
 # MODULE 3 — Configure the participant workspace and Git fork
@@ -159,8 +158,6 @@ git clone --branch packmate-v2 --single-branch \
   packmate-agent
 cd packmate-agent
 ```
-
-![Live validation capture of the participant fork repository opened in the Packmate code-server Workbench.](assets/screenshots/module-03-repository-open-current.png)
 
 All remaining terminal commands run from `/opt/app-root/src/packmate-agent`.
 
@@ -298,11 +295,11 @@ make verify-demo-fork-live
    - **Packmate-Weather-MCP**
    - **Packmate-Baggage-Policy-MCP**
 
-[Screenshot required: Packmate Llama model asset in packmate-lab with current readiness state]
-
 ![Both active Packmate MCP server assets in project packmate-lab.](assets/screenshots/module-05-mcp-asset-endpoints.png)
 
 The physical model remains in `my-first-model`. Do not deploy another Llama model in `packmate-lab`.
+
+**REQUIRED RESULT:** The Packmate model and both MCP server assets are available in `packmate-lab`.
 
 ## 5.2 Configure the Playground
 
@@ -338,23 +335,15 @@ Then test at least these variations:
 
 Expand the tool-call details for one weather call and one baggage-policy call.
 
-[Screenshot required: Weather MCP tool call]
-
-[Screenshot required: Baggage MCP tool call]
-
 **REQUIRED EVIDENCE:** One successful Weather MCP call, one successful Baggage Policy MCP call, and a response grounded in those results.
 
 ## 5.4 View the prototype code
 
-Open **View code** or **Copy code** and identify the model, system prompt, and tool definitions. Do not copy credentials into notes.
-
-![Playground View Code export showing the generated Python configuration.](assets/screenshots/module-05-view-code-export.png)
-
-**EXPECTED RESULT:** You can explain that the export is a prototype bridge, not the production application.
+**EXPECTED RESULT:** In **View code** or **Copy code**, identify the model, prompt, and tools, and explain why the export is a prototype bridge. Never copy credentials into notes.
 
 ---
 
-# MODULE 6 — Validate the industrialized DEV application
+# MODULE 6 — Validate the integrated DEV application
 
 > **WHAT YOU WILL COMPLETE**
 > Open the React/FastAPI DEV application, run the same travel scenario, and compare the integrated service with the Playground prototype.
@@ -369,11 +358,7 @@ make verify-dev
 oc get route packmate-frontend -n packmate-lab
 ```
 
-![Accepted frontend and MCP Routes in the packmate-lab DEV project.](assets/screenshots/module-06-dev-routes.png)
-
 Open the HTTPS route and submit the same Rome cabin-bag scenario from Module 5.
-
-![Current live Rome cabin-bag scenario entered in the integrated DEV application.](assets/screenshots/module-06-dev-request-current.png)
 
 ![Current live structured DEV response with weather and packing results; dates and conditions vary by run.](assets/screenshots/module-06-dev-response-current.png)
 
@@ -381,7 +366,7 @@ Open the HTTPS route and submit the same Rome cabin-bag scenario from Module 5.
 
 ## 6.2 Compare prototype and application
 
-| Playground prototype | Industrialized DEV application |
+| Playground prototype | Integrated DEV application |
 |---|---|
 | Model, prompt, and MCP tools assembled interactively | The same behavior integrated behind FastAPI and React |
 | Manual chat session | Schema validation, bounded retry, MCP caching, and metrics |
@@ -420,32 +405,19 @@ Follow the task sequence:
 
 **clone → test → ai-quality-gate → validate-manifests → build-backend → publish-candidate → publish-result**
 
-The Pipeline demonstrates:
+The graph covers backend tests, deterministic AI evaluation, manifest validation, image build, durable GHCR candidate publication, and result publication.
 
-- backend tests;
-- deterministic AI evaluation;
-- manifest validation;
-- backend image build;
-- durable GHCR candidate publication;
-- result publication.
-
-[Screenshot required: Successful PipelineRun seven-task graph]
+**REQUIRED RESULT:** The PipelineRun reports **Succeeded**, and all seven tasks in the sequence report **Succeeded**.
 
 ## 7.3 Inspect the AI quality gate
 
 Open task **ai-quality-gate** and record the scenario count, score, threshold, and status.
 
-[Screenshot required: AI quality gate PASS]
-
 **REQUIRED RESULT:** Status is **PASS** and score is at least **0.90**.
 
 ## 7.4 Capture the immutable candidate
 
-Open task **publish-result** and record:
-
-- the PipelineRun name;
-- `PROMOTION_IMAGE_REFERENCE`;
-- the AI quality score.
+Open task **publish-result** and locate `PROMOTION_IMAGE_REFERENCE`.
 
 The reference must look like:
 
@@ -453,11 +425,17 @@ The reference must look like:
 ghcr.io/YOUR_USERNAME/packmate-backend@sha256:...
 ```
 
-[Screenshot required: Candidate image digest]
-
 An immutable digest identifies exactly which tested image is being promoted. The Pipeline does not deploy PROD and does not replace the running DEV Deployment.
 
-**REQUIRED EVIDENCE:** PipelineRun name, quality score, and the full GHCR `@sha256:` reference.
+**REQUIRED EVIDENCE:** Record all of the following from your run:
+
+- PipelineRun name;
+- task outcome: **seven tasks succeeded**;
+- scenario count: **16**;
+- quality status: **PASS**;
+- score from your run (the validated reference score is **0.9559**);
+- threshold: **0.90**;
+- the complete external `PROMOTION_IMAGE_REFERENCE`, beginning with `ghcr.io/` and containing the full `@sha256:` digest.
 
 > **STOP BEFORE CONTINUING**
 > Do not promote a failed run, a score below 0.90, a mutable tag, or an internal OpenShift registry reference.
@@ -476,18 +454,22 @@ An immutable digest identifies exactly which tested image is being promoted. The
 
 ```bash
 make verify-github-write-readiness
-make verify-demo-baseline PIPELINERUN=<pipelinerun-name>
+make verify-demo-baseline PIPELINERUN=packmate-ci-example
 ```
+
+The PipelineRun name above is an example. Substitute the actual name you recorded in Module 7.
 
 **REQUIRED RESULT:** GitHub writes target your fork and a promotion difference exists.
 
 ## 8.2 Create the promotion pull request
 
-Replace the placeholder with the PipelineRun name from Module 7:
+Use the same substitution for the promotion command:
 
 ```bash
-make promote PIPELINERUN=<pipelinerun-name>
+make promote PIPELINERUN=packmate-ci-example
 ```
+
+`packmate-ci-example` demonstrates the format only; it is not participant evidence and must be replaced with your actual PipelineRun name.
 
 The command independently checks that:
 
@@ -541,8 +523,6 @@ If access was granted during bootstrap, log out and back in once so the OpenShif
 
 Click **Refresh** if needed and wait for **OutOfSync**. Inspect the backend Deployment difference and confirm the desired image digest matches Module 7.
 
-[Screenshot required: Argo CD OutOfSync]
-
 **REQUIRED RESULT:** The Application is OutOfSync because Git is ahead of PROD. This is expected before Sync.
 
 ## 9.3 Synchronize PROD manually
@@ -551,8 +531,6 @@ Click **Refresh** if needed and wait for **OutOfSync**. Inspect the backend Depl
 2. Leave **Prune** disabled.
 3. Confirm the synchronization.
 4. Wait for **Synced** and **Healthy**.
-
-[Screenshot required: Argo CD Synced and Healthy]
 
 Argo CD remains the owner of Git-tracked PROD resources. PROD automatic Sync and self-heal remain disabled for this workshop.
 
@@ -564,8 +542,6 @@ oc get route packmate-frontend -n packmate-prod
 ```
 
 Open the HTTPS Route and run the Rome cabin-bag scenario again.
-
-![Accepted frontend and MCP Routes in the packmate-prod project.](assets/screenshots/module-09-prod-routes.png)
 
 ![Current live PROD response after Argo CD Sync, showing Rome weather and the structured packing report.](assets/screenshots/module-09-prod-response-current.png)
 
@@ -600,20 +576,101 @@ You preserved the central platform boundaries: the canonical repository stayed r
 
 # APPENDIX A — Participant troubleshooting
 
-| SYMPTOM | WHAT IT MEANS | RECOVERY |
-|---|---|---|
-| `BLOCKED_CANONICAL_REPOSITORY_PROMOTION` or wrong fork URL | `origin` or `GIT_REPO_URL` points to canonical upstream | Run `git remote set-url origin https://github.com/YOUR_USERNAME/packmate-agent.git`, then `make configure-participant` and `make verify-demo-fork` |
-| Branch settings disagree | Current branch, GitOps revision, and promotion base are not coordinated | Before baseline preparation run `git switch packmate-v2 && make configure-participant`; for the standard prepared path run `make prepare-demo-baseline` |
-| Git push authentication fails, including askpass `ECONNREFUSED` | The Workbench cannot reach a valid Git credential prompt or your credential lacks fork access | Run `unset GIT_ASKPASS SSH_ASKPASS`, complete `gh auth login` in the terminal, then `make verify-github-write-readiness` |
-| `BLOCKED_OPENSHIFT_SERVICE_ACCOUNT_IDENTITY` | `oc` is authenticated as a workload identity, not you | Run `oc logout`, then `oc login --web`, and confirm a human username with `oc whoami` |
-| `packmate-ghcr-push` missing | Tekton cannot mount credentials for candidate publication | Run `make configure-promotion-registry && make verify-promotion-registry`, then start a new PipelineRun |
-| Pipeline `publish-candidate` fails | GHCR credential is missing, expired, or lacks package-write permission | Run `make diagnose-latest-pipelinerun`, renew access with `make configure-promotion-registry`, then start a new PipelineRun |
-| `BLOCKED_NO_PROMOTION_DIFF` | PROD Git already contains the same candidate, so there is no reviewable change | Run `make prepare-demo-baseline`, start a new PipelineRun from the prepared branch, then promote that run |
-| Argo CD does not show the merged change | The Application has not refreshed the watched fork branch | In Argo CD click **Refresh**, confirm repo and revision with `make verify-demo-fork-live`, then wait for OutOfSync |
-| `make verify-prod` fails before Sync | Git contains the approved image but PROD still runs the previous state | Return to Argo CD, manually **Sync**, wait for Synced/Healthy, then run `make verify-prod` again |
-| Model or MCP assets are missing | Bootstrap did not finish or the OpenShift AI dashboard cache is stale | Run `make bootstrap && make verify-dev`, hard-refresh Gen AI studio, and select project `packmate-lab` |
-| Pipeline test task cannot find `requirements-dev.txt` | The run used Empty Directory instead of a shared PVC | Start a new run and choose **VolumeClaimTemplate**, **2 GiB**, for workspace `source` |
-| Argo CD access is denied after bootstrap | Your current SSO token does not include the new group membership | Log out of Argo CD, log in via OpenShift again, then reopen `packmate-prod` |
+## A.1 Canonical repository promotion is blocked
+
+**SYMPTOM:** `BLOCKED_CANONICAL_REPOSITORY_PROMOTION` appears, or the fork URL is wrong.
+
+**WHAT IT MEANS:** `origin` or `GIT_REPO_URL` points to canonical upstream.
+
+**RECOVERY:** Run `git remote set-url origin https://github.com/YOUR_USERNAME/packmate-agent.git`, then `make configure-participant` and `make verify-demo-fork`.
+
+## A.2 Branch settings disagree
+
+**SYMPTOM:** The current branch, GitOps revision, and promotion base do not match.
+
+**WHAT IT MEANS:** The workshop branch settings are not coordinated.
+
+**RECOVERY:** Before baseline preparation, run `git switch packmate-v2` and `make configure-participant`. For the standard prepared path, run `make prepare-demo-baseline`.
+
+## A.3 Git push authentication fails
+
+**SYMPTOM:** A Git push fails, including an askpass `ECONNREFUSED` error.
+
+**WHAT IT MEANS:** The Workbench cannot reach a valid Git credential prompt, or your credential lacks access to your fork.
+
+**RECOVERY:** Run `unset GIT_ASKPASS SSH_ASKPASS`, complete `gh auth login` in the terminal, then run `make verify-github-write-readiness`.
+
+## A.4 OpenShift is using a workload identity
+
+**SYMPTOM:** `BLOCKED_OPENSHIFT_SERVICE_ACCOUNT_IDENTITY` appears.
+
+**WHAT IT MEANS:** `oc` is authenticated as a ServiceAccount instead of your human user.
+
+**RECOVERY:** Run `oc logout`, then `oc login --web`, and confirm a human username with `oc whoami`.
+
+## A.5 The GHCR publication Secret is missing
+
+**SYMPTOM:** `packmate-ghcr-push` is missing.
+
+**WHAT IT MEANS:** Tekton cannot mount credentials for candidate publication.
+
+**RECOVERY:** Run `make configure-promotion-registry` and `make verify-promotion-registry`, then start a new PipelineRun.
+
+## A.6 Candidate publication fails
+
+**SYMPTOM:** Pipeline task `publish-candidate` fails.
+
+**WHAT IT MEANS:** The GHCR credential is missing, expired, or lacks package-write permission.
+
+**RECOVERY:** Run `make diagnose-latest-pipelinerun`, renew access with `make configure-promotion-registry`, then start a new PipelineRun.
+
+## A.7 There is no promotion difference
+
+**SYMPTOM:** `BLOCKED_NO_PROMOTION_DIFF` appears.
+
+**WHAT IT MEANS:** PROD Git already contains the same candidate, so there is no reviewable change.
+
+**RECOVERY:** Run `make prepare-demo-baseline`, start a new PipelineRun from the prepared branch, then promote that run.
+
+## A.8 Argo CD does not show the merged change
+
+**SYMPTOM:** The application remains Synced after the pull request is merged.
+
+**WHAT IT MEANS:** The Application has not refreshed the watched fork branch.
+
+**RECOVERY:** In Argo CD, click **Refresh**. Confirm the repository and revision with `make verify-demo-fork-live`, then wait for OutOfSync.
+
+## A.9 PROD verification fails before Sync
+
+**SYMPTOM:** `make verify-prod` fails before manual Sync.
+
+**WHAT IT MEANS:** Git contains the approved image, but PROD still runs the previous state.
+
+**RECOVERY:** Return to Argo CD, manually **Sync**, wait for Synced/Healthy, then run `make verify-prod` again.
+
+## A.10 Model or MCP assets are missing
+
+**SYMPTOM:** The model or one of the MCP assets does not appear ready.
+
+**WHAT IT MEANS:** Bootstrap did not finish, or the OpenShift AI dashboard cache is stale.
+
+**RECOVERY:** Run `make bootstrap` and `make verify-dev`, hard-refresh Gen AI studio, and select project `packmate-lab`.
+
+## A.11 The Pipeline cannot find test requirements
+
+**SYMPTOM:** The Pipeline test task cannot find `requirements-dev.txt`.
+
+**WHAT IT MEANS:** The run used Empty Directory instead of a shared PVC.
+
+**RECOVERY:** Start a new run and choose **VolumeClaimTemplate**, **2 GiB**, for workspace `source`.
+
+## A.12 Argo CD access is denied after bootstrap
+
+**SYMPTOM:** Argo CD denies access after bootstrap completes.
+
+**WHAT IT MEANS:** Your current SSO token does not include the new group membership.
+
+**RECOVERY:** Log out of Argo CD, log in via OpenShift again, then reopen `packmate-prod`.
 
 > **SECURITY RECOVERY RULE**
 > If a credential was pasted into a file or Git history, stop. Revoke it in GitHub, remove it from the local file without committing, obtain a replacement, and use only the supported hidden prompt or credential flow.
@@ -640,7 +697,7 @@ Run these commands from `/opt/app-root/src/packmate-agent`.
 | `make verify-demo-fork-live` | Confirm live Argo CD Applications watch your fork and prepared branch | Yes, read-only |
 | `make diagnose-latest-pipelinerun` | Explain common Pending or Failed Pipeline causes | Yes, read-only |
 | `make verify-demo-baseline` | Confirm a reviewable promotion difference can exist | Yes, read-only |
-| `make promote PIPELINERUN=<name>` | Validate a successful run and open a one-file digest promotion PR in your fork | Creates a fork branch and PR |
+| `make promote PIPELINERUN=packmate-ci-example` | Validate a successful run and open a one-file digest promotion PR in your fork; replace the example run name first | Creates a fork branch and PR |
 | `make verify-prod` | Verify PROD after manual Argo CD Sync | Yes, non-destructive |
 
 Never use participant commands to push to canonical upstream, store tokens in `config/sandbox.env`, directly apply runtime overlays, update the PROD Deployment image, or synchronize PROD from the Pipeline.

@@ -39,10 +39,9 @@ def parse_table(lines: list[str]) -> str:
     body = rows[2:]
     width_map = {
         ("ENV", "Namespace", "Purpose", "Deployment owner"): (22, 18, 35, 25),
-        ("Symptom", "What it means", "Recovery"): (23, 27, 50),
         ("Command", "Purpose", "Safe to repeat"): (25, 55, 20),
         ("Scenario", "What to observe"): (38, 62),
-        ("Playground prototype", "Industrialized DEV application"): (48, 52),
+        ("Playground prototype", "Integrated DEV application"): (48, 52),
     }
     widths = width_map.get(tuple(header), tuple([100 // len(header)] * len(header)))
     columns = "".join(f'<col style="width:{width}%">' for width in widths)
@@ -128,10 +127,13 @@ def markdown_body(source: str, source_dir: Path, output_dir: Path) -> str:
                 classes = ["section-heading"]
                 if title.startswith("MODULE "):
                     classes.append("module-heading")
-                    out.append(
-                        '<p class="module-page-break" '
-                        'style="page-break-before:always;break-before:page;margin:0"></p>'
-                    )
+                    # Module 7 follows the compact DEV comparison naturally in
+                    # Writer; forcing a break strands that comparison by itself.
+                    if not title.startswith("MODULE 7 "):
+                        out.append(
+                            '<p class="module-page-break" '
+                            'style="page-break-before:always;break-before:page;margin:0"></p>'
+                        )
                 if title == "WORKSHOP COMPLETE":
                     classes.append("completion-heading")
                 css = f' class="{" ".join(classes)}"'
@@ -182,21 +184,6 @@ def markdown_body(source: str, source_dir: Path, output_dir: Path) -> str:
                 f'<img src="{html.escape(image_src, quote=True)}" alt="{html.escape(caption, quote=True)}" '
                 'style="display:block;width:100%;height:auto;border:1px solid #d2d2d2" />'
                 f'<figcaption style="color:#4f5255;font-size:11px;margin-top:6px">{inline(caption)}</figcaption></figure>'
-            )
-            index += 1
-            continue
-
-        if stripped.startswith("[") and stripped.endswith("]") and "Screenshot required:" in stripped:
-            flush_paragraph()
-            label = stripped[1:-1]
-            subject = label.split(":", 1)[1].strip()
-            out.append(
-                '<figure class="screenshot" style="margin:13px 0 17px;page-break-inside:avoid">'
-                '<table class="placeholder" role="presentation" style="width:100%;height:128px;'
-                'border-collapse:collapse;margin:0;background:#f0f0f0;color:#6a6e73">'
-                '<tr><td style="height:128px;border:2px dashed #929292;text-align:center;'
-                f'vertical-align:middle;padding:18px;font-weight:bold">CURRENT SCREENSHOT NEEDED: {inline(subject)}</td></tr></table>'
-                '</figure>'
             )
             index += 1
             continue
@@ -282,8 +269,6 @@ td { vertical-align: top; padding: 1.6mm; border: .25mm solid #d2d2d2; overflow-
 tbody tr:nth-child(even) { background: #f5f5f5; }
 .screenshot { margin: 3.5mm 0 4.5mm; break-inside: avoid; page-break-inside: avoid; }
 .screenshot img { display: block; width: 100%; height: auto; max-height: 160mm; object-fit: contain; border: .25mm solid #d2d2d2; }
-.placeholder { height: 34mm; border-collapse: collapse; background: #f0f0f0; color: #6a6e73; font-weight: 700; letter-spacing: .03em; }
-.placeholder td { height: 34mm; border: .5mm dashed #929292; text-align: center; vertical-align: middle; padding: 4mm; }
 figcaption { color: #4f5255; font-size: 8pt; margin-top: 1.5mm; }
 strong { font-weight: 700; }
 """

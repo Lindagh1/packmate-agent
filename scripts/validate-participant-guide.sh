@@ -53,17 +53,17 @@ missing = sorted(commands - targets)
 if missing:
     raise SystemExit(f"guide references missing Make targets: {', '.join(missing)}")
 
-placeholder_count = source.count("[Screenshot required:")
-if placeholder_count != 9:
-    raise SystemExit(f"expected exactly 9 named authenticated-UI placeholders, found {placeholder_count}")
+for placeholder in ("[Screenshot required:", "CURRENT SCREENSHOT NEEDED"):
+    if placeholder in source:
+        raise SystemExit(f"participant guide contains a screenshot placeholder: {placeholder}")
 
 screenshot_refs = re.findall(
     r"^!\[[^]]+]\((assets/screenshots/[^)]+\.png)\)$",
     source,
     flags=re.M,
 )
-if len(screenshot_refs) != 17 or len(set(screenshot_refs)) != 17:
-    raise SystemExit("expected exactly 17 unique reused/current screenshot references")
+if len(screenshot_refs) != 12 or len(set(screenshot_refs)) != 12:
+    raise SystemExit("expected exactly 12 unique retained screenshot references")
 for reference in screenshot_refs:
     screenshot = Path(sys.argv[1]).parent / reference
     if not screenshot.is_file():
@@ -78,12 +78,24 @@ for extension in html docx pdf; do
 done
 printf 'PASS  generated HTML, DOCX, and PDF exist\n'
 
+if grep -Fqi 'CURRENT SCREENSHOT NEEDED' "${BASE}.html" \
+  || grep -Fq 'class="placeholder"' "${BASE}.html"; then
+  echo "FAIL  HTML contains a screenshot placeholder" >&2
+  exit 1
+fi
+if unzip -p "${BASE}.docx" word/document.xml 2>/dev/null \
+  | grep -Fqi 'CURRENT SCREENSHOT NEEDED'; then
+  echo "FAIL  DOCX contains a screenshot placeholder" >&2
+  exit 1
+fi
+printf 'PASS  generated HTML and DOCX contain no screenshot placeholders\n'
+
 unzip -p "${BASE}.docx" word/document.xml 2>/dev/null \
   | grep -q 'WORKSHOP COMPLETE' || { echo "FAIL  DOCX completion heading missing" >&2; exit 1; }
 unzip -p "${BASE}.docx" word/document.xml 2>/dev/null \
   | grep -q 'APPENDIX B' || { echo "FAIL  DOCX Appendix B missing" >&2; exit 1; }
 docx_images="$(unzip -Z1 "${BASE}.docx" 'word/media/*' 2>/dev/null | wc -l | tr -d ' ')"
-[[ "${docx_images}" =~ ^[0-9]+$ && "${docx_images}" -ge 17 ]] \
+[[ "${docx_images}" =~ ^[0-9]+$ && "${docx_images}" -eq 12 ]] \
   || { echo "FAIL  expected reused screenshots embedded in DOCX; found ${docx_images:-0}" >&2; exit 1; }
 if unzip -p "${BASE}.docx" word/_rels/document.xml.rels 2>/dev/null | grep -q 'TargetMode="External"'; then
   echo "FAIL  DOCX contains externally linked screenshots" >&2
@@ -102,6 +114,10 @@ if command -v pdfinfo >/dev/null 2>&1 && command -v pdftotext >/dev/null 2>&1; t
   grep -q 'APPENDIX B' "${text_file}" || { echo "FAIL  PDF Appendix B missing" >&2; exit 1; }
   if grep -Eqi '\brollback\b|MODULE 10|CURRENT CODE' "${text_file}"; then
     echo "FAIL  PDF contains legacy workshop wording" >&2
+    exit 1
+  fi
+  if grep -Fqi 'CURRENT SCREENSHOT NEEDED' "${text_file}"; then
+    echo "FAIL  PDF contains a screenshot placeholder" >&2
     exit 1
   fi
   python3 - "${text_file}" <<'PY'
