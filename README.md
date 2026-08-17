@@ -95,7 +95,7 @@ Outputs:
 - `docs/generated/Packmate_Participant_Guide.docx`
 - `docs/generated/Packmate_Participant_Guide.pdf`
 
-Generation preserves the Red Hat-inspired white/black/red visual language, callout colors, dark terminal blocks, page breaks, tables, and locally approved screenshots. The guide reuses 14 verified, cropped screenshots from the prior participant DOCX and keeps 13 specifically named placeholders for evidence that requires a current sandbox. No screenshot is fabricated; see [`docs/SCREENSHOT_REUSE_AUDIT.md`](docs/SCREENSHOT_REUSE_AUDIT.md).
+Generation preserves the Red Hat-inspired white/black/red visual language, callout colors, dark terminal blocks, page breaks, tables, and locally approved screenshots. The guide embeds 12 screenshots: nine verified and cropped from the prior participant DOCX and three from the final live RHDP validation. It contains no screenshot placeholders, and no screenshot is fabricated; see [`docs/SCREENSHOT_REUSE_AUDIT.md`](docs/SCREENSHOT_REUSE_AUDIT.md).
 
 ## Local validation
 

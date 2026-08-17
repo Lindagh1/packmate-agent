@@ -7,7 +7,7 @@
 **Disposable participant branch:** `demo/final-validation-20260813` in
 `lindagh-labs/packmate-agent`
 
-**Verdict:** **LAB READY WITH NINE AUTHENTICATED-UI SCREENSHOTS STILL NEEDED**
+**Verdict:** **LAB READY; FINAL GUIDE HAS ZERO EMPTY SCREENSHOT BOXES**
 
 The old Packmate deployment was inventoried before reset: 97 confidently
 Packmate-owned resource records, shared OpenShift AI/GitOps/Pipelines/model
@@ -53,10 +53,11 @@ remained healthy.
 | Static acceptance | render, PROD validation, security, ownership, fork safety, guide validation — PASS |
 | Live post-bootstrap acceptance | DEV, GitOps, PROD, fork source, SSE, exact digest — PASS |
 
-The remaining visual work is limited to the nine authenticated console states
-classified in `docs/SCREENSHOT_REUSE_AUDIT.md`. They do not block the tested
-technical path, but they should be captured before distributing a polished
-beginner participant PDF.
+The authenticated Playground interaction and expanded tool-call panels were not
+captured during the run. They remain an honest evidence limitation, not a guide
+placeholder or a technical blocker. The final guide uses only workflow-accurate
+images, retains the adjacent verified text evidence, and is ready for beginner
+distribution.
 
 ---
 

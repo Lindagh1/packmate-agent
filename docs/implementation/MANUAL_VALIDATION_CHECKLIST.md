@@ -1,10 +1,9 @@
 # Manual validation checklist — Packmate on OpenShift AI (DEV → PROD)
 
-Status (2026-08-13): the complete technical path was live-validated. Manual UI
-capture remains required only for the nine authenticated console states listed
-in `docs/SCREENSHOT_REUSE_AUDIT.md`; Playground UI interaction itself remains
-PARTIAL. Cluster, protocol, GitHub PR, application, and GitOps results are in
-`LAB_ACCEPTANCE_REPORT.md`.
+Status (2026-08-13): the complete technical path was live-validated. Playground
+UI interaction itself remains PARTIAL, but no additional screenshot capture is
+required for the finalized participant guide. Cluster, protocol, GitHub PR,
+application, and GitOps results are in `LAB_ACCEPTANCE_REPORT.md`.
 
 Sections A–N below cover **DEV** (`packmate-lab`, current Modules 2–7 of
 `docs/PARTICIPANT_GUIDE.md`). Section O covers **PROD** (`packmate-prod`,

@@ -46,7 +46,7 @@ were verified independently.
 - Frontend validation runs locally with npm or through a Node 22 Podman fallback;
   it can no longer fail silently when npm is absent.
 - The participant guide is generated from one Markdown source into HTML, DOCX,
-  and a visually reviewed 27-page PDF with module page breaks.
+  and a visually reviewed 25-page PDF with module page breaks.
 
 ## Validation summary
 
@@ -56,9 +56,10 @@ regression checks passed; security, renders, Pipeline/PROD validation, GitOps
 ownership, guide generation/validation, and live post-bootstrap acceptance all
 passed.
 
-## Remaining honest gap
+## Remaining honest evidence limitation
 
-Nine current authenticated-UI screenshots remain named and classified in
-`docs/SCREENSHOT_REUSE_AUDIT.md`. Old screenshots that showed removed or stale
-workflows were rejected. This is the only material polish task remaining before
-beginner distribution; no technical DEV→PROD blocker remains from this run.
+The authenticated Playground interaction and expanded tool-call panels were not
+captured during the live run. The guide does not substitute stale screenshots or
+empty boxes for that evidence: it retains the verified instructions and required
+results in text. `docs/SCREENSHOT_REUSE_AUDIT.md` records every reuse and rejection
+decision. There is no remaining technical DEV→PROD release blocker.

@@ -43,28 +43,29 @@ The generator uses only repository source, repository screenshot assets, locally
 - red warnings and stop checkpoints;
 - dark terminal blocks with wrapped monospace text.
 
-Module headings are kept with the content that follows and use a strong red section rule. Content flows continuously so a final checkpoint is not stranded on an otherwise empty page. Heading groups, figures, and table rows avoid bad page breaks where the output format supports them. Approved screenshots are losslessly cropped repository PNGs. Missing current evidence appears as a grey, specifically named placeholder; the generator never invents images.
+Module headings are kept with the content that follows and use a strong red section rule. Content flows continuously so a final checkpoint is not stranded on an otherwise empty page. Heading groups, figures, and table rows avoid bad page breaks where the output format supports them. Approved screenshots are losslessly cropped repository PNGs. When no current, workflow-accurate screenshot is available, the guide relies on the adjacent instruction and required result instead of inventing an image or displaying an empty placeholder.
 
 ## Screenshot evidence
 
-The source reuses 14 screenshots from the prior participant DOCX after module-by-module verification. The extraction, crop, caption, and rejection decisions are recorded in `docs/SCREENSHOT_REUSE_AUDIT.md`.
+The final source embeds 12 screenshots: nine verified and cropped from the prior participant DOCX, plus three captures from the final live RHDP validation. The extraction, crop, caption, reuse, and rejection decisions are recorded in `docs/SCREENSHOT_REUSE_AUDIT.md`.
 
-The 13 current-sandbox placeholders are:
+The embedded screenshots are:
 
-1. `packmate-workbench` Running and ready to open
-2. Repository open in code-server
-3. Packmate Llama model asset in `packmate-lab` with current readiness state
-4. System instructions
-5. Weather MCP tool call
-6. Baggage MCP tool call
-7. Successful PipelineRun seven-task graph
-8. AI quality gate PASS
-9. Candidate image digest
-10. Promotion pull request
-11. Argo CD OutOfSync
-12. Argo CD Synced and Healthy
-13. PROD application response after verification
+1. RHDP OpenShift AI order page
+2. Participant fork and branch
+3. OpenShift AI launcher
+4. Create project dialog
+5. Workbench image and size controls
+6. MCP asset endpoints
+7. Playground model and MCP selection
+8. Current DEV application response
+9. Pipeline entry and start navigation
+10. Current promotion pull request
+11. Argo CD OpenShift login control
+12. Current PROD application response
+
+The generated HTML, DOCX, and PDF contain no screenshot placeholders.
 
 ## Validation
 
-`make guide` finishes by running `make validate-guide`. Validation checks module order, required appendices, forbidden legacy wording, screenshot asset references, named placeholder count, generated file presence, embedded DOCX images, document text, page count, and obvious stranded module headings. Placeholders still require an instructor smoke run on an RHDP sandbox.
+`make guide` finishes by running `make validate-guide`. Validation checks module order, required appendices, forbidden legacy wording, the exact 12 screenshot references, zero screenshot placeholders, generated file presence, embedded DOCX images, document text, page count, and obvious stranded module headings.
