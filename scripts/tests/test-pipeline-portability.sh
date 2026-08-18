@@ -14,6 +14,16 @@ OBSOLETE="sha256:ae2c1317fa423c188c408d81e61b87dbc5b559577272ac189bea4eede92661c
 
 echo "=== Packmate portability failure-scenario checks ==="
 
+for run_file in \
+  "${ROOT}/.tekton/lab/packmate-ci-run.yaml" \
+  "${ROOT}/.tekton/lab/packmate-ci-pipelinerun.example.yaml"; do
+  if ! grep -q 'YOUR_GITHUB_USERNAME\|value: packmate-v2' "${run_file}"; then
+    pass "PipelineRun inherits rendered fork/branch defaults ($(basename "${run_file}"))"
+  else
+    fail "PipelineRun overrides rendered fork/branch defaults ($(basename "${run_file}"))"
+  fi
+done
+
 # 14/15/16 template guards
 if [[ -f "${TPL}" ]] && ! grep -q "${OBSOLETE}" "${TPL}"; then
   pass "14. Pipeline template has no obsolete digest"
@@ -21,7 +31,10 @@ else
   fail "14. Pipeline template has no obsolete digest"
 fi
 if [[ -f "${TPL}" ]] && grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${TPL}" \
-  && grep -q '__PACKMATE_PIPELINE_CLI_IMAGE__' "${TPL}"; then
+  && grep -q '__PACKMATE_PIPELINE_CLI_IMAGE__' "${TPL}" \
+  && grep -q '__PACKMATE_GIT_REPO_URL__' "${TPL}" \
+  && grep -q '__PACKMATE_GIT_REVISION__' "${TPL}" \
+  && grep -q '__PACKMATE_PROMOTION_REGISTRY_OWNER__' "${TPL}"; then
   pass "15. Pipeline template contains portable placeholders"
 else
   fail "15. Pipeline template contains portable placeholders"
@@ -151,11 +164,18 @@ PACKMATE_SKIP_PYTHON_IMAGE_PULL_PROBE=true \
 import sys
 tpl, out, py_ph, py_img, cli_ph, cli_img = sys.argv[1:7]
 text = open(tpl, encoding="utf-8").read().replace(py_ph, py_img).replace(cli_ph, cli_img)
+text = text.replace("__PACKMATE_GIT_REPO_URL__", "https://github.com/demo-user/packmate-agent.git")
+text = text.replace("__PACKMATE_GIT_REVISION__", "demo/packmate-workshop")
+text = text.replace("__PACKMATE_PROMOTION_REGISTRY__", "ghcr.io")
+text = text.replace("__PACKMATE_PROMOTION_REGISTRY_OWNER__", "demo-user")
+text = text.replace("__PACKMATE_PROMOTION_IMAGE_NAME__", "packmate-backend")
 open(out, "w", encoding="utf-8").write(text)
 PY
   '
 if grep -q "${FAKE_IMG}" "${OUT}" && grep -q "${FAKE_CLI}" "${OUT}" \
-  && ! grep -q '__PACKMATE_PIPELINE_PYTHON_IMAGE__' "${OUT}"; then
+  && grep -q 'https://github.com/demo-user/packmate-agent.git' "${OUT}" \
+  && grep -q 'value: demo-user' "${OUT}" \
+  && ! grep -q '__PACKMATE_' "${OUT}"; then
   pass "17. New sandbox digest can be rendered via placeholder"
 else
   fail "17. New sandbox digest can be rendered via placeholder"

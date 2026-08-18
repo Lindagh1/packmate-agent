@@ -1,12 +1,13 @@
 # Manual validation checklist — Packmate on OpenShift AI (DEV → PROD)
 
-Status: **MANUAL_REQUIRED** for Workbench UI, Playground session, and the
-Argo CD Sync/pull-request review clicks (Modules D–F). Automated cluster deploy +
-public Route performance are documented in `CLUSTER_DEPLOYMENT_REPORT.md`.
+Status (2026-08-13): the complete technical path was live-validated. Playground
+UI interaction itself remains PARTIAL, but no additional screenshot capture is
+required for the finalized participant guide. Cluster, protocol, GitHub PR,
+application, and GitOps results are in `LAB_ACCEPTANCE_REPORT.md`.
 
-Sections A–N below cover **DEV** (`packmate-lab`, Modules A–B of
+Sections A–N below cover **DEV** (`packmate-lab`, current Modules 2–7 of
 `docs/PARTICIPANT_GUIDE.md`). Section O covers **PROD** (`packmate-prod`,
-Modules C–F: Pipeline, Promotion, Production, Rollback) — added 2026-07-23; see the
+the earlier Pipeline/Promotion/Production split) — added 2026-07-23; see the
 honest-status note in that section before treating it as validated.
 
 Use this checklist with `docs/PARTICIPANT_GUIDE.md`, `WORKBENCH_MANUAL.md`, and
@@ -33,11 +34,11 @@ logs or screenshots.
 | Field | Value |
 |-------|--------|
 | Action UI | Project `packmate-lab` → **Workbenches** → **Create workbench** |
-| Value | Name: `packmate-code-server`; Image: **Code Server \| Data Science \| CPU \| Python 3.12** (`2025.2` / `3.4`); CPU req `500m` limit `2`; Memory req `2Gi` limit `4Gi`; Storage `20Gi`; no Git/LLM secrets |
+| Value | Name: `packmate-workbench`; Image: **Code Server \| Data Science \| CPU \| Python 3.12** (`3.4`); CPU req `500m` limit `2`; Memory req `2Gi` limit `4Gi`; Storage `20Gi`; no Git/LLM secrets |
 | Expected | Workbench status **Running** |
 | Validation | Open Workbench; terminal available |
 | Common issue | Image pull / quota — ask instructor; do not invent Notebook CR YAML |
-| Screenshot | `[Screenshot required: Workbench packmate-code-server Running]` |
+| Screenshot | `[Screenshot required: packmate-workbench Running and ready to open]` |
 
 ---
 
@@ -60,7 +61,7 @@ logs or screenshots.
 |-------|--------|
 | Action UI | Workbench terminal |
 | Value | Backend: `cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt && pytest -q` ; MCP: pytest in `mcp-servers/weather` and `mcp-servers/baggage-policy` ; Frontend if Node available: `npm ci && npm run lint && npm run test && npm run build` |
-| Expected | Backend ~96 passed; MCP suites green; frontend lint/test/build OK when Node present |
+| Expected | Backend, both MCP suites, frontend lint/tests/build, and AI gate exit 0 (`make test`) |
 | Validation | Exit code 0 for each suite run |
 | Common issue | Missing system packages in image — use instructor-approved Workbench image |
 | Screenshot | `[Screenshot required: pytest summary green in Workbench]` |
@@ -208,18 +209,12 @@ logs or screenshots.
 | Expected | `packmate-prod` serves the promoted backend on its own Route with no Workbench/Pipeline/Playground/custom endpoint in that namespace |
 | Validation | `make verify-prod` passes; PR diff limited to the backend image entry; Argo CD shows Prune/self-heal disabled |
 | Common issue | Argo CD `promoter` role not yet effective — participant must log out/in to Argo CD after being added to `packmate-lab-users` (see `docs/TROUBLESHOOTING.md`) |
-| Screenshot | `[Screenshot required: Pipeline successful]`, `[Screenshot required: AI quality gate PASS]`, `[Screenshot required: Candidate image digest]`, `[Screenshot required: Promotion pull request]`, `[Screenshot required: Argo CD OutOfSync]`, `[Screenshot required: Argo CD Synced and Healthy]`, `[Screenshot required: PROD Route]` (all defined in `docs/PARTICIPANT_GUIDE.md`) |
+| Participant evidence | PipelineRun name; seven succeeded tasks; 16 scenarios; PASS; score; threshold 0.90; full external GHCR digest; promotion pull request; Argo CD state transition; successful PROD result |
 
-**Honest status (2026-07-23):** the underlying scripts (`prepare-prod.sh`,
-`promote-backend-image.sh`, `rollback-prod-image.sh`, `configure-argocd-lab-rbac.sh`,
-`verify-prod.sh`, `verify-gitops.sh`) exist, are offline-validated
-(`make validate-prod` passes; repository tests pass — see
-`docs/implementation/FINAL_REPORT.md`), and their logic was reviewed line-by-line
-while writing this checklist. A **live-cluster** run of Section O end to end
-(PipelineRun → PR → merge → Sync → PROD Route → rollback PR → merge → Sync) is
-**MANUAL_REQUIRED and not yet performed** in this documentation pass. Do not mark
-this section validated until that live run happens and its evidence is logged in
-`docs/implementation/LAB_ACCEPTANCE_REPORT.md` § 12.
+**Live status (2026-08-13):** PipelineRun `packmate-ci-whbrq`, participant-fork
+PR #2, manual Argo CD Sync, exact-digest `make verify-prod`, and the PROD Rome
+Route scenario all passed. Optional current authenticated Tekton/Argo CD UI
+captures remain a maintainer wishlist and are not participant-guide blockers.
 
 ---
 
@@ -227,24 +222,23 @@ this section validated until that live run happens and its evidence is logged in
 
 | Check | Status |
 |-------|--------|
-| `make preflight` / `bootstrap` / `verify` | Use after Modules A.2–A.4; bootstrap also prepares (not deploys) `packmate-prod` |
+| `make preflight` / `bootstrap` / `verify` | Use in Module 4; bootstrap also prepares (not deploys) `packmate-prod` |
 | Custom model endpoint | Automated by default (`CREATE_MODEL_CUSTOM_ENDPOINT=true`), DEV only — participants never Create endpoint |
 | Pipeline `packmate-ci` | Start from UI with a 2Gi VolumeClaimTemplate; do not auto-promote backend |
 | `packmate-prod` prep | Automated from bootstrap (`CREATE_PROD_NAMESPACE`/`CREATE_ARGOCD_APPLICATION`/`CREATE_ARGOCD_RBAC`, all default `true`) — namespace/Secret/RBAC/Argo objects only, no workload apply |
-| Promotion / rollback | `scripts/promote-backend-image.sh` / `scripts/rollback-prod-image.sh` — Git pull request only, never a direct cluster edit |
-| Argo CD | Required for Modules D–F — else `GITOPS_OPERATOR_REQUIRED` and those modules are screenshot-only |
-| Screenshots | Placeholders in `PARTICIPANT_GUIDE.md` (Modules A–E, 16 total) |
+| Promotion | `make promote PIPELINERUN=packmate-ci-example` after replacing the example with the actual run name — Git pull request only, never a direct cluster edit |
+| Argo CD | Required for Modules 4, 8, and 9 — else `GITOPS_OPERATOR_REQUIRED` |
+| Screenshots | Zero participant-visible empty screenshot boxes; see `docs/SCREENSHOT_REUSE_AUDIT.md` for retained and rejected evidence |
 
 ## Sign-off
 
 | Area | Status |
 |------|--------|
-| Workbench creation | `MANUAL_REQUIRED` |
+| Workbench creation | Resulting Notebook/PVC/pod/code-server state validated; no screenshot is required in the participant guide |
 | Playground session | `MANUAL_REQUIRED` |
 | MCP ConfigMap registration | Applied on this cluster (instructor/admin) — still verify in UI |
 | Public DEV Route automated performance | See `CLUSTER_DEPLOYMENT_REPORT.md` |
-| PipelineRun validation | `MANUAL_REQUIRED` (UI Start) — do not replace live backend |
-| Argo CD Sync (`packmate-lab` demo Application) | Validated 2026-07-22 (see `FINAL_REPORT.md`) |
-| Promotion PR (Module D) | `MANUAL_REQUIRED` — not yet run on a live cluster in this pass |
-| PROD Sync + Route (Module E) | `MANUAL_REQUIRED` — not yet run on a live cluster in this pass |
-| Rollback PR + Sync (Module F) | `MANUAL_REQUIRED` — not yet run on a live cluster in this pass |
+| PipelineRun validation | **PASS** — `packmate-ci-whbrq`; seven tasks, 16 scenarios, score 0.9559, threshold 0.90, and PASS recorded as text evidence |
+| Argo CD DEV | **PASS** — Synced/Healthy and fork-owned |
+| Promotion PR (Module 8) | **PASS** — participant-fork PR #2, exactly one PROD overlay file |
+| PROD Sync + Route (Module 9) | **PASS** — manual Sync, exact digest, Route/SSE/Rome scenario |
